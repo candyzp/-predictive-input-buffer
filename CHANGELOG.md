@@ -1,3 +1,10 @@
+## v2.79.12
+- Remove the iOS `PlayLayer::init` hook entirely; earlier project history documented repeated startup crashes with this hook used as a bootstrap.
+- Keep only `PlayLayer::onEnterTransitionDidFinish` and `PlayLayer::onQuit` as lifecycle sentinels on iOS.
+- Initialize per-level state and start guarded gameplay-hook activation after the level-entry transition instead of enabling `PlayLayer::init` while the main menu is loading.
+- Preserve the v2.79.9 crash-diagnostics initialization-order fix.
+- CI build success does not confirm device runtime; this is a source/history-based correction to the launch crash path.
+
 ## v2.79.11
 - Add an iOS hook-registration bisect build using only group A hook classes: EndLevelLayer, PauseLayer, PlayLayer, LevelEditorLayer, and HardStreak.
 - Exclude group B (EffectGameObject, GameObject, PlayerObject, GJBaseGameLayer) from this iOS diagnostic build; non-iOS builds keep all hook classes.
