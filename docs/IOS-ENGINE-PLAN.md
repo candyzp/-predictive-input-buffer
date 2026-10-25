@@ -55,3 +55,10 @@ Before enabling a mode by default: successful iOS CI build; cold-launch tests; l
 ## Current milestone
 
 v2.79.0 is the hook-free startup-isolation baseline. No prediction or input interception is active.
+
+
+## Increment 1: tick-rate probe
+
+The current active implementation adds one `PlayerObject::update` hook and no others. It calls the original update exactly once and measures only player 1. It displays total ticks, measured update calls per second, and latest `dt`, behind the `Tick rate` setting. It must pass cold-launch and level lifecycle tests before any other hook is introduced.
+
+Once validated, remove or replace the probe before adding the next hook; each subsequent hook must be its own separately testable increment.
