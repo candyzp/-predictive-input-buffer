@@ -3390,12 +3390,15 @@ private:
 
     void loopFloater(CCNode* node) {
         float rise = node->getTag() / 10.f;
+        // CCPlace::create is not linked by Geode's iOS cocos bindings.
+        // Keep the same decorative loop, resetting to the original position with CCMoveTo.
+        auto startPosition = node->getPosition();
         node->runAction(CCRepeatForever::create(CCSequence::create(
             CCSpawn::create(CCMoveBy::create(rise, { 0.f, 270.f }),
                 CCSequence::create(CCFadeTo::create(rise * 0.3f, 110), CCDelayTime::create(rise * 0.4f), CCFadeTo::create(rise * 0.3f, 0),
                     nullptr),
                 nullptr),
-            CCPlace::create(node->getPosition()), nullptr)));
+            CCMoveTo::create(0.001f, startPosition), nullptr)));
     }
 
     void colorLabels() {
