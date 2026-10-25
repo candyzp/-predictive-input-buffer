@@ -1,3 +1,8 @@
+## v2.79.11
+- Add an iOS hook-registration bisect build using only group A hook classes: EndLevelLayer, PauseLayer, PlayLayer, LevelEditorLayer, and HardStreak.
+- Exclude group B (EffectGameObject, GameObject, PlayerObject, GJBaseGameLayer) from this iOS diagnostic build; non-iOS builds keep all hook classes.
+- Gameplay activation remains intentionally disabled, so this build tests whether the registered group alone reproduces the pre-menu Geode/Tulip hook-dispatch recursion crash.
+
 ## v2.79.10
 - Add an iOS startup-isolation build for the pre-menu crash report showing deep recursion in Geode's Tulip hook-dispatch handler.
 - Leave every gameplay hook disabled, including the PlayLayer::init bootstrap, while preserving startup checkpoints.
