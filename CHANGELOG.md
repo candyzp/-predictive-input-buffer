@@ -1,3 +1,8 @@
+## v2.79.14
+- Replace the iOS `PlayLayer::onEnterTransitionDidFinish` bootstrap with `PlayLayer::update`, a gameplay-specific method, to avoid hooking a lifecycle callback that may resolve to a shared inherited Cocos implementation on iOS.
+- All Click Before Frames hooks remain disabled during app/menu startup. After Geode's menu-loaded event, only the PlayLayer update bootstrap is enabled; per-level setup runs on the first live PlayLayer update and all other hooks are queued for a later main-thread pass.
+- This directly targets the recursive TulipHook dispatch signature seen in the native crash report; the JIT-less TulipHook issue remains a plausible contributing factor, not a device-confirmed diagnosis.
+
 ## v2.79.13
 - Keep every Click Before Frames hook auto-disabled during app startup and menu loading.
 - After Geode's `GameEventType::Loaded` event, queue activation of only `PlayLayer::onEnterTransitionDidFinish`; enable the remaining gameplay hooks only after an actual level-entry transition.
