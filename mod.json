@@ -7,7 +7,7 @@
   "id": "basu.input-buffer",
   "name": "Click Before Frames",
   "developer": "BASU",
-  "description": "iOS predictive input buffer based on the Windows reference engine. One universal max input-delay slider caps predictions for every supported gameplay mode. iOS predictive input buffer. PlayLayer::init is not hooked on iOS; gameplay setup waits until the level-entry transition, after the main menu.",
+  "description": "iOS predictive input buffer based on the Windows reference engine. One universal max input-delay slider caps predictions for every supported gameplay mode. On iOS, PlayLayer::init is not hooked; per-level setup starts after the level-entry transition.",
   "settings": {
     "max-delay-ticks": {
       "type": "int",
