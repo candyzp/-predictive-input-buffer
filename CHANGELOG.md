@@ -1,3 +1,9 @@
+## v2.79.13
+- Keep every Click Before Frames hook auto-disabled during app startup and menu loading.
+- After Geode's `GameEventType::Loaded` event, queue activation of only `PlayLayer::onEnterTransitionDidFinish`; enable the remaining gameplay hooks only after an actual level-entry transition.
+- Remove the `PlayLayer::onQuit` early-startup hook; it is enabled by the gameplay hook guard only while a level is active.
+- This targets the pre-menu hook-dispatch recursion path. The stack signature resembles a known JIT-less TulipHook looping issue; a successful build is not proof of an on-device fix.
+
 ## v2.79.12
 - Remove the iOS `PlayLayer::init` hook entirely; earlier project history documented repeated startup crashes with this hook used as a bootstrap.
 - Keep only `PlayLayer::onEnterTransitionDidFinish` and `PlayLayer::onQuit` as lifecycle sentinels on iOS.
