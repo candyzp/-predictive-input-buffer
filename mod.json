@@ -3,19 +3,19 @@
   "gd": {
     "ios": "2.2081"
   },
-  "version": "v2.79.5",
+  "version": "v2.79.6",
   "id": "basu.input-buffer",
   "name": "Click Before Frames",
   "developer": "BASU",
-  "description": "iOS input-buffer stage control prototype with separate optional debugger. The Wave delay is derived from the All-ticks stage. Input interception remains disabled.",
+  "description": "iOS input-buffer max-delay control prototype with a separate optional debugger. The max delay uses real tick values from 0 to 64; Wave ticks are derived automatically. Input interception remains disabled.",
   "settings": {
-    "tick-rate-stage": {
+    "max-delay-ticks": {
       "type": "int",
-      "name": "Tick rate",
-      "description": "One slider selects the All-ticks stage: 2, 4, 8, 16, or OFF. Wave ticks are derived automatically as min(All ticks, 8). Four ticks = one frame at 60 FPS. This is an input-buffer delay stage, not native physics TPS.",
-      "default": 0,
+      "name": "Max input delay (ticks)",
+      "description": "Maximum delay window for the main input buffer. 0 = OFF/raw input; 1–64 selects the actual tick count. Wave is derived from this value: up to 8 ticks uses the same Wave limit, 9–16 keeps Wave at 8, and above 16 uses half the All limit (minimum 8 when the buffer is enabled). This preserves the original 2/2, 4/4, 8/8, 16/8, 24/12, and 32/16 All/Wave presets. 4 ticks = 1 frame at 60 FPS. This is not the game's physics tick rate.",
+      "default": 2,
       "min": 0,
-      "max": 4,
+      "max": 64,
       "control": {
         "arrows": false,
         "arrow-step": 1,
@@ -29,7 +29,7 @@
     "debugger-enabled": {
       "type": "bool",
       "name": "Input buffer debugger",
-      "description": "Separately enable/disable diagnostic log messages when the stage changes, including the derived Wave tick count. Does not change the selected stage or gameplay.",
+      "description": "Separately enable/disable diagnostic log messages for the current max input delay and its automatically derived Wave limit. Does not change the selected delay or gameplay.",
       "default": true
     }
   },

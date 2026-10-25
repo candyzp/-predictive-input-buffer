@@ -54,11 +54,11 @@ Before enabling a mode by default: successful iOS CI build; cold-launch tests; l
 
 ## Current milestone
 
-v2.79.5 is a no-hook input-buffer stage slider prototype with a separate `Input buffer debugger` toggle. The `Tick rate` slider selects All-tick stages 2, 4, 8, 16, OFF; Wave ticks are derived as min(All ticks, 8). The debugger independently controls stage diagnostic logs. Neither setting controls native game physics TPS.
+v2.79.6 is a no-hook input-buffer max-delay slider prototype with a separate `Input buffer debugger` toggle. `Max input delay (ticks)` exposes actual integer values 0–64; 0 means OFF/raw input. Wave is derived from the main value, preserving the original mappings 2/2, 4/4, 8/8, 16/8, 24/12, and 32/16 (All/Wave). Neither setting changes native game physics TPS.
 
 
 ## Increment 1: buffer-stage control
 
-The active implementation has no gameplay hooks. One draggable Geode integer slider sets only the All-ticks stage; Wave ticks are derived as min(All ticks, 8). Stages are 2/2, 4/4, 8/8, 16/8, and OFF. A separate `Input buffer debugger` toggle controls diagnostic messages without changing the selected stage.
+The active implementation has no gameplay hooks. One draggable Geode integer slider sets the real main input-buffer delay from 0 to 64 ticks (not a stage index); 0 means OFF/raw input. Wave's limit is derived from that value: up to 8 uses the same limit, 9–16 uses 8, and above 16 uses half the All limit (minimum 8 when enabled). A separate `Input buffer debugger` toggle controls diagnostics only.
 
-This is a control harness only: it does not delay inputs while the prediction and input scheduler are absent. After slider selection, derived Wave ticks, and debugger toggle pass on iOS, increment 2 can connect the stored stage selection to the isolated input scheduler. Do not change the game's global physics clock or player update `dt` to implement buffer delay.
+This is a control harness only: it does not delay inputs while the prediction engine and input scheduler are absent. After actual slider values, derived Wave limits, and the separate debugger pass on iOS, increment 2 can connect the stored max-delay value to the isolated input scheduler. Do not change the game's global physics clock or player update `dt` to implement buffer delay.

@@ -1,37 +1,43 @@
 # Click Before Frames — iOS rebuild
 
-## Current state: one stage slider + separate debugger
+## Current state: real tick slider + separate debugger
 
-Version **v2.79.5** has one **Tick rate** slider for the input-buffer All-ticks stage and a separate **Input buffer debugger** toggle.
+Version **v2.79.6** has one **Max input delay (ticks)** slider and a separate **Input buffer debugger** toggle. The slider represents actual tick counts, not a stage index or Geometry Dash's physics tick rate.
 
-## Tick rate slider
+## Max input delay (ticks)
 
-The slider selects only the All-ticks stage. Wave ticks are derived automatically as `min(All ticks, 8)`; there is no independent Wave-tick control.
+The slider is continuous in integer steps from **0 to 64 ticks**. **0 = OFF/raw input**. Four simulation ticks equal one frame at 60 FPS.
 
-| Stage | All ticks | Derived Wave ticks |
-|---|---:|---:|
-| 1 | 2 | 2 |
-| 2 | 4 | 4 |
-| 3 | 8 | 8 |
-| 4 | 16 | 8 |
-| 5 | OFF | OFF |
+Wave's maximum delay is derived automatically from the main value. There is no separate Wave setting:
 
-Four simulation ticks equal one frame at 60 FPS.
+| All / main delay | Derived Wave limit |
+|---:|---:|
+| 2 ticks | 2 ticks |
+| 4 ticks | 4 ticks |
+| 8 ticks | 8 ticks |
+| 12 ticks | 8 ticks |
+| 16 ticks | 8 ticks |
+| 24 ticks | 12 ticks |
+| 32 ticks | 16 ticks |
+| 64 ticks | 32 ticks |
+| OFF (0) | OFF |
+
+This preserves the original mod's established preset mapping while allowing intermediate values such as 12 or 20 ticks.
 
 ## Separate debugger
 
-**Input buffer debugger** independently controls stage diagnostic logging. When enabled, startup and slider changes log the selected stage and its derived Wave tick count. Turning the debugger off stops stage diagnostic messages; turning it back on logs the currently selected stage. The debugger does not change the slider selection.
+**Input buffer debugger** independently controls diagnostic messages. When enabled, startup and slider changes log the chosen All limit and its calculated Wave limit. Turning the debugger off stops delay-setting diagnostics; turning it back on logs the current selection. It does not change the selected delay.
 
 ## Important prototype boundary
 
-There are still **no gameplay hooks**. This build verifies the slider, derived Wave count, persistence provided by the Geode setting, and the debugger toggle. It does not delay inputs yet; that will be connected once the iOS input scheduler is rebuilt and validated.
+There are still **no gameplay hooks** in this iOS harness. This build verifies that the setting stores and exposes actual 0–64 tick values, derives the Wave value, and keeps the debugger separate. It does **not** delay gameplay inputs yet; the input scheduler and mode hooks must be rebuilt and validated before the value affects gameplay.
 
 ## Test checklist
 
-1. Move **Tick rate** through all five stages.
-2. Confirm the debugger logs 2/2, 4/4, 8/8, 16/8, and OFF.
-3. Turn **Input buffer debugger** off and confirm changing stages no longer creates stage logs.
-4. Turn it back on and confirm the selected stage is logged again.
+1. Drag **Max input delay (ticks)** to values such as 2, 8, 12, 16, 24, 32, and 64; verify it reaches each number rather than stopping at a stage index of 4.
+2. Confirm the debugger reports Wave values 2, 8, 8, 8, 12, 16, and 32 for All values 2, 8, 12, 16, 24, 32, and 64.
+3. Set the slider to 0 and confirm it logs OFF/raw input.
+4. Turn **Input buffer debugger** off and confirm delay-setting changes no longer create diagnostic logs; turn it back on and confirm the current value is logged.
 5. Check cold launch, pause, restart, and level entry before adding gameplay hooks.
 
 ## References

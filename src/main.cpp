@@ -6,77 +6,60 @@
 using namespace geode::prelude;
 
 namespace {
-    struct BufferStage {
-        int ticksAll;
-        bool enabled;
-    };
+    constexpr int MAX_INPUT_DELAY_TICKS = 64;
 
-    // All ticks are the only stage value. Wave delay is derived as min(All, 8).
-    // Four simulation ticks equal one frame at 60 FPS.
-    constexpr BufferStage STAGES[] = {
-        { 2,  true  },
-        { 4,  true  },
-        { 8,  true  },
-        { 16, true  },
-        { 0,  false },
-    };
-    constexpr int STAGE_COUNT = static_cast<int>(std::size(STAGES));
-
-    int clampStage(int64_t value) {
-        return std::clamp(static_cast<int>(value), 0, STAGE_COUNT - 1);
+    int clampInputDelay(int64_t value) {
+        return std::clamp(static_cast<int>(value), 0, MAX_INPUT_DELAY_TICKS);
     }
 
+    // Keep the original Click Before Frames All/Wave preset behavior:
+    // 2/2, 4/4, 8/8, 16/8, 24/12, 32/16.
+    // For values above 16, Wave receives half the All limit, never below 8.
     int waveTicksFor(int allTicks) {
-        return std::min(allTicks, 8);
+        if (allTicks <= 8) {
+            return allTicks;
+        }
+        return std::max(8, allTicks / 2);
     }
 
-    void logStage(int64_t value, bool startup) {
+    void logDelay(int64_t rawValue, bool startup) {
         auto* mod = Mod::get();
         if (!mod->getSettingValue<bool>("debugger-enabled")) {
             return;
         }
 
-        const int index = clampStage(value);
-        const auto& stage = STAGES[index];
+        const int allTicks = clampInputDelay(rawValue);
+        const char* origin = startup ? "Startup" : "Max input delay slider";
 
-        if (!stage.enabled) {
-            log::info("[InputBuffer] {}: STAGE 5: OFF (100% Raw Input)",
-                startup ? "Starting Mode" : "Tick rate slider");
+        if (allTicks == 0) {
+            log::info("[InputBuffer] {}: Max input delay OFF (100% raw input)", origin);
             return;
         }
 
-        const int waveTicks = waveTicksFor(stage.ticksAll);
-        const float allFrames = static_cast<float>(stage.ticksAll) / 4.0f;
+        const int waveTicks = waveTicksFor(allTicks);
+        const float allFrames = static_cast<float>(allTicks) / 4.0f;
         const float waveFrames = static_cast<float>(waveTicks) / 4.0f;
 
-        if (startup) {
-            log::info("[InputBuffer] Starting Mode: STAGE {} ({} All / {} Wave)",
-                index + 1, stage.ticksAll, waveTicks);
-        }
-        else if (stage.ticksAll == waveTicks) {
-            log::info("[InputBuffer] Tick rate slider -> STAGE {}: {} Ticks All | {} Ticks Wave ({:.1f}f @ 60fps)",
-                index + 1, stage.ticksAll, waveTicks, allFrames);
-        }
-        else {
-            log::info("[InputBuffer] Tick rate slider -> STAGE {}: {} Ticks All | {} Ticks Wave ({:.1f}f / {:.1f}f @ 60fps)",
-                index + 1, stage.ticksAll, waveTicks, allFrames, waveFrames);
-        }
+        log::info(
+            "[InputBuffer] {}: Max input delay = {} ticks ({:.2f}f) | auto Wave limit = {} ticks ({:.2f}f) @ 60fps",
+            origin, allTicks, allFrames, waveTicks, waveFrames
+        );
     }
 }
 
-// This harness has no gameplay hooks and does not delay inputs.
-// It validates the one All-ticks slider and the separate debugger toggle.
+// Startup-safe settings harness only: no gameplay hooks and no delayed inputs yet.
 $on_mod(Loaded) {
-    logStage(Mod::get()->getSettingValue<int64_t>("tick-rate-stage"), true);
+    auto* mod = Mod::get();
+    logDelay(mod->getSettingValue<int64_t>("max-delay-ticks"), true);
 
-    listenForSettingChanges<int64_t>("tick-rate-stage", [](int64_t value) {
-        logStage(value, false);
+    listenForSettingChanges<int64_t>("max-delay-ticks", [](int64_t value) {
+        logDelay(value, false);
     });
 
     listenForSettingChanges<bool>("debugger-enabled", [](bool enabled) {
         log::info("[InputBuffer] Debugger: {}", enabled ? "ON" : "OFF");
         if (enabled) {
-            logStage(Mod::get()->getSettingValue<int64_t>("tick-rate-stage"), true);
+            logDelay(Mod::get()->getSettingValue<int64_t>("max-delay-ticks"), true);
         }
     });
 }
