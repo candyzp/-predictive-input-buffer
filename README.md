@@ -3,6 +3,8 @@
 ## Keys
 F6 cycle stage | F7 menu | F8 copy the console log | F9 open/close the in-game console | F10 path view | F11 forget this level's memory
 
+On iOS, open **Buffer** from the pause menu. Keyboard shortcuts are desktop-only.
+
 Practice use only; do not use for verified or leaderboard runs.
 
 ## v2.4 options (mod settings)
