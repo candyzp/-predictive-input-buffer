@@ -3,16 +3,16 @@
   "gd": {
     "ios": "2.2081"
   },
-  "version": "v2.79.4",
+  "version": "v2.79.5",
   "id": "basu.input-buffer",
   "name": "Click Before Frames",
   "developer": "BASU",
-  "description": "iOS input-buffer stage slider prototype. Selects and logs the delay stage; input interception remains disabled until the engine rebuild is ready.",
+  "description": "iOS input-buffer stage control prototype with separate optional debugger. The Wave delay is derived from the All-ticks stage. Input interception remains disabled.",
   "settings": {
     "tick-rate-stage": {
       "type": "int",
       "name": "Tick rate",
-      "description": "Select the input-buffer delay stage: 2/2 → 4/4 → 8/8 → 16/8 → OFF. Four ticks = one frame at 60 FPS. This chooses the delay window, not Geometry Dash's native physics TPS.",
+      "description": "One slider selects the All-ticks stage: 2, 4, 8, 16, or OFF. Wave ticks are derived automatically as min(All ticks, 8). Four ticks = one frame at 60 FPS. This is an input-buffer delay stage, not native physics TPS.",
       "default": 0,
       "min": 0,
       "max": 4,
@@ -25,6 +25,12 @@
         "slider-step": 1,
         "input": false
       }
+    },
+    "debugger-enabled": {
+      "type": "bool",
+      "name": "Input buffer debugger",
+      "description": "Separately enable/disable diagnostic log messages when the stage changes, including the derived Wave tick count. Does not change the selected stage or gameplay.",
+      "default": true
     }
   },
   "resources": {

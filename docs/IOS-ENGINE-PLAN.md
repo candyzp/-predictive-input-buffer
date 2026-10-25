@@ -54,11 +54,11 @@ Before enabling a mode by default: successful iOS CI build; cold-launch tests; l
 
 ## Current milestone
 
-v2.79.4 is a no-hook input-buffer stage slider prototype. The `Tick rate` slider selects the exact buffer stage set 2/2, 4/4, 8/8, 16/8, OFF and logs changes. It does not control native game physics TPS.
+v2.79.5 is a no-hook input-buffer stage slider prototype with a separate `Input buffer debugger` toggle. The `Tick rate` slider selects All-tick stages 2, 4, 8, 16, OFF; Wave ticks are derived as min(All ticks, 8). The debugger independently controls stage diagnostic logs. Neither setting controls native game physics TPS.
 
 
 ## Increment 1: buffer-stage control
 
-The active implementation has no gameplay hooks. It verifies that a draggable Geode integer slider maps to the existing input-buffer stage sequence and logs each selection. Four ticks equal one frame at 60 FPS. The stage sequence is Stage 1 (2 All / 2 Wave), Stage 2 (4/4), Stage 3 (8/8), Stage 4 (16/8), and Stage 5 OFF (100% raw input).
+The active implementation has no gameplay hooks. One draggable Geode integer slider sets only the All-ticks stage; Wave ticks are derived as min(All ticks, 8). Stages are 2/2, 4/4, 8/8, 16/8, and OFF. A separate `Input buffer debugger` toggle controls diagnostic messages without changing the selected stage.
 
-This is a control harness only: it does not delay inputs while the prediction and input scheduler are absent. After slider persistence and logging pass on iOS, increment 2 can connect the stored stage selection to the isolated input scheduler. Do not change the game's global physics clock or player update `dt` to implement buffer delay.
+This is a control harness only: it does not delay inputs while the prediction and input scheduler are absent. After slider selection, derived Wave ticks, and debugger toggle pass on iOS, increment 2 can connect the stored stage selection to the isolated input scheduler. Do not change the game's global physics clock or player update `dt` to implement buffer delay.
