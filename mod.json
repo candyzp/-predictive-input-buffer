@@ -1,13 +1,14 @@
 {
 	"geode": "5.11.2",
 	"gd": {
-		"win": "2.2081"
+		"win": "2.2081",
+		"ios": "2.2081"
 	},
-	"version": "v2.77.0",
+	"version": "v2.77.1",
 	"id": "basu.input-buffer",
 	"name": "Click Before Frames",
 	"developer": "BASU",
-	"description": "Trajectory-based input buffer: delays early clicks/releases by up to 8+ frames, with orb, pad and portal-aware prediction. github.com/raresdalas1009/-predictive-input-buffer",
+	"description": "Trajectory-based input buffer: delays early clicks/releases by up to 8+ frames, with orb, pad and portal-aware prediction. iOS builds include touch controls. github.com/candyzp/-predictive-input-buffer",
 	"settings": {
 		"custom-ticks": {
 			"type": "int",
@@ -42,7 +43,7 @@
 		"debug-console": {
 			"type": "bool",
 			"name": "Debug console window",
-			"description": "Also open a separate Windows console with the same log as the in-game console (F9). Needs a restart.",
+			"description": "Windows only: also open a separate console with the same log as the in-game console (F9). Needs a restart.",
 			"default": false
 		},
 		"ground-horizon": {
@@ -392,6 +393,6 @@
 		]
 	},
 	"links": {
-		"source": "https://github.com/raresdalas1009/-predictive-input-buffer"
+		"source": "https://github.com/candyzp/-predictive-input-buffer"
 	}
 }
