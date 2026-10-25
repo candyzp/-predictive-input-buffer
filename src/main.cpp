@@ -172,10 +172,15 @@ namespace {
 
         if (!crashedOn.empty()) {
             guardBanned.insert(crashedOn);
-            log::error("[InputBuffer] guard: previous run ended while '{}' was active; quarantining it", crashedOn);
+            if (crashedOn == "gameplay-running") {
+                log::error("[InputBuffer] guard: previous run ended during gameplay; entering pass-through safe mode to prevent a repeat crash");
+            }
+            else {
+                log::error("[InputBuffer] guard: previous run ended while '{}' was active; quarantining it", crashedOn);
+            }
         }
-        guardSafeMode = guardBanned.contains("gameplay-setup");
-        if (guardSafeMode) {
+        guardSafeMode = guardBanned.contains("gameplay-setup") || guardBanned.contains("gameplay-running");
+        if (guardBanned.contains("gameplay-setup")) {
             log::error("[InputBuffer] guard: gameplay setup was quarantined; this level will run in pass-through safe mode");
         }
         guardWrite("");
@@ -203,8 +208,10 @@ namespace {
             }
             if (!guardCurrent.empty()) {
                 guardCurrent.clear();
-                guardWrite("");
             }
+            // Keep a session marker while the level is active. If a hook crashes later,
+            // the next attempt will enter pass-through safe mode instead of repeating it.
+            guardWrite("gameplay-running");
             guardRunning = false;
             log::info("[InputBuffer] guard: gameplay activation complete; {} hooks quarantined", guardBanned.size());
             return;
@@ -4030,7 +4037,7 @@ $on_mod(Loaded) {
     if (Loader::get()->isModLoaded("square3ang.cbfextrapolate")) {
         say("CBF Extrapolate detected: visual only, predictions unaffected");
     }
-    say("v2.77.10 loaded. Gameplay hooks activate only after entering a level.");
+    say("v2.77.11 loaded. Gameplay hooks activate only inside a level.");
 #if defined(GEODE_IS_IOS)
     log::info("[InputBuffer] startup: initialization complete; gameplay hooks remain disabled until a level is entered");
 #endif
