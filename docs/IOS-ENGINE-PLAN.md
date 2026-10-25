@@ -54,7 +54,7 @@ Before enabling a mode by default: successful iOS CI build; cold-launch tests; l
 
 ## Current milestone
 
-v2.79.0 is the hook-free startup-isolation baseline. No prediction or input interception is active.
+v2.79.1 is the hook-free startup-isolation baseline. No prediction or input interception is active.
 
 
 ## Increment 1: tick-rate probe
