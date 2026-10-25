@@ -8,6 +8,13 @@
 // iOS safety: gameplay hooks remain deferred until the menu loads and are then enabled
 // one at a time by the crash guard. A failing hook is quarantined on the next launch.
 
+// TEMPORARY iOS hook-registration bisect: keep group A classes only.
+// Group A: EndLevelLayer, PauseLayer, PlayLayer, LevelEditorLayer, HardStreak.
+// Group B: EffectGameObject, GameObject, PlayerObject, GJBaseGameLayer.
+#if defined(GEODE_IS_IOS)
+#define CBF_IOS_HOOK_BISECT_GROUP_A 1
+#endif
+
 #include <Geode/Geode.hpp>
 #include <string_view>
 #include <Geode/loader/GameEvent.hpp>
@@ -4139,7 +4146,7 @@ $on_mod(Loaded) {
     if (Loader::get()->isModLoaded("square3ang.cbfextrapolate")) {
         say("CBF Extrapolate detected: visual only, predictions unaffected");
     }
-    say("v2.79.10 diagnostic build loaded; gameplay hooks intentionally disabled.");
+    say("v2.79.11 hook-group A diagnostic build; gameplay hooks intentionally inactive.");
 #if defined(GEODE_IS_IOS)
     crashDiagnosticCheckpoint("Loaded callback finished; waiting for Geode's menu-loaded event");
     log::info("[InputBuffer] startup: initialization complete; all hooks remain disabled until Geode finishes loading the menu");
@@ -4478,6 +4485,8 @@ class $modify(BufHardStreak, HardStreak) {
     }
 };
 
+#if !defined(GEODE_IS_IOS) || !defined(CBF_IOS_HOOK_BISECT_GROUP_A)
+// Excluded from iOS diagnostic build v2.79.11; non-iOS builds retain all hooks.
 class $modify(BufEffectGameObject, EffectGameObject) {
     static void onModify(auto& self) {
         deferIOSHooksUntilQueue(self);
@@ -4988,3 +4997,5 @@ class $modify(BufBaseGameLayer, GJBaseGameLayer) {
         GJBaseGameLayer::playerWillSwitchMode(player, object);
     }
 };
+
+#endif // !GEODE_IS_IOS || !CBF_IOS_HOOK_BISECT_GROUP_A
