@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.77.7 — 2026-10-25
+
+- Remove the standalone `PlayLayer::init` sentinel hook; the v2.77.6 log showed that hook was still enabled during startup while the crash recurred.
+- Defer all mod hooks on iOS and queue their activation with Geode's supported main-thread queue after the mod's `Loaded` callback returns.
+- Runtime launch behavior still requires device verification; build success alone is not proof of a crash fix.
+
 ## v2.77.6 — 2026-10-25
 
 - Remove Click Before Frames' iOS `MenuLayer::init` hook, which added another hook to the launch-time menu initialization chain.
