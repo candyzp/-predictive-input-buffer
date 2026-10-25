@@ -54,11 +54,11 @@ Before enabling a mode by default: successful iOS CI build; cold-launch tests; l
 
 ## Current milestone
 
-v2.79.7 is a no-hook input-buffer prototype with one universal `Max input delay (ticks)` slider (0–64) and a separate `Input buffer debugger` toggle. The single limit is shared by every gameplay mode; there are no per-mode delay values or formulas. Neither setting changes native game physics TPS.
+v2.79.8 restores the archived iOS-capable predictive engine while preserving its iOS startup hook guard. One `Max input delay (ticks)` slider (0–64, 0 = OFF) bounds prediction timing across all supported modes. The separate `Input buffer debugger` records actual gameplay decisions and queue state. No per-mode delay caps are retained.
 
 
-## Increment 1: buffer-stage control
+## Increment 1: universal predictive delay
 
-The active implementation has no gameplay hooks. One draggable Geode integer slider sets the universal input-buffer maximum from 0 to 64 actual ticks; 0 means OFF/raw input. The same single limit is intended for every gameplay mode without mode-specific values. A separate `Input buffer debugger` toggle controls diagnostics only.
+The active code uses the reference engine's prediction and queue. It does not apply a fixed delay to every click: the input passes through unless a candidate offset survives longer and passes the engine's save checks. The shared 0–64 max-delay value bounds the predictor for all modes; later press/release events are shifted to preserve tap and hold timing.
 
-This is a control harness only: it does not delay inputs while the prediction engine and input scheduler are absent. After the single universal delay slider and separate debugger are validated on iOS, increment 2 can connect that stored value to the isolated input scheduler for all modes. Do not change the game's global physics clock or player update `dt` to implement buffer delay.
+The previous iOS startup quarantine remains in place: only `PlayLayer::init` is initially enabled after menu load, then gameplay hooks are enabled one at a time and quarantined on a later launch if one crashes. The debugger is separate and reports input outcomes/queue state. This version needs staged on-device practice-mode validation after the iOS build succeeds.

@@ -1,35 +1,35 @@
-# Click Before Frames — iOS rebuild
+# Click Before Frames — iOS predictive rebuild
 
-## Current settings: one universal delay slider + separate debugger
+## Current state: predictive tick engine + one universal max-delay slider
 
-Version **v2.79.7** has one **Max input delay (ticks)** slider shared by the entire input-buffer system, plus a separate **Input buffer debugger** toggle.
+Version **v2.79.8** restores the predictive engine from the archived iOS-capable implementation, based on the Windows reference. The active source retains the iOS hook guard: gameplay hooks stay disabled during menu startup, the bootstrap hook starts only after the menu loads, and remaining hooks are enabled one at a time with crash quarantine.
 
-## One universal input-delay value
+## How the tick value actually works
 
-The slider exposes actual integer tick values from **0 to 64**. **0 = OFF/raw input**. Four simulation ticks equal one frame at 60 FPS.
+**Max input delay (ticks)** is the maximum prediction search window, not a fixed delay applied to every input. The engine simulates the player's path with a candidate input at different tick offsets. If pressing now is already safe, the input goes straight through. If a candidate delay survives longer and passes the engine's save checks, the input is queued for that tick instead.
 
-The selected limit is universal: the same value applies to every gameplay mode. There are no per-mode delay values, extra delay sliders, or mode-specific formulas. The only other setting is the optional debugger, which only controls diagnostic logs.
+The slider exposes actual integer ticks from **0 to 64**. **0 = OFF/raw input**. Four physics ticks equal one frame at 60 FPS.
+
+**One universal cap applies to every supported gameplay mode.** The previous independent Wave delay and ship delay settings are removed. Mode-specific prediction code remains where the physics differs (that is needed to predict wave/ship/robot inputs correctly), but the delay cap comes from the same one slider. Orb-alignment is still a prediction feature; its search window cannot exceed the universal cap.
+
+## Press/release queue
+
+The reference engine keeps ordered input events. While a press is delayed, subsequent press/release events are shifted so a tap does not collapse and a hold keeps its length. The queue is delivered from the player update hook on physics ticks, not by changing Geometry Dash's global physics speed or the player's `dt`.
 
 ## Separate debugger
 
-**Input buffer debugger** independently enables or disables logs for the current universal delay value. It never changes the slider value.
+**Input buffer debugger** outputs actual gameplay press/release decisions, whether the event was handled or passed through, the universal cap, pending queue state, and setting changes to the Geode log. Prediction-specific save/miss explanations also appear in the mod's in-game console. The debugger does not change buffering.
 
-## Important prototype boundary
+## Crash-safety boundary
 
-There are still **no gameplay hooks** in this iOS harness. This build verifies the one 0–64 tick setting and separate debugger. It does **not** delay gameplay inputs yet; the input scheduler must be rebuilt and validated before the selected limit affects gameplay.
+The iOS port retains the archived crash guard. On startup, hooks are deferred until the menu finishes loading; `PlayLayer::init` is the sole bootstrap hook, and gameplay hooks are enabled incrementally. A candidate hook is marked before activation so a crash can be quarantined next launch. The crash diagnostics live in the mod's save directory under `crash-diagnostics`.
 
-## Test checklist
-
-1. Drag **Max input delay (ticks)** to 2, 8, 12, 16, 24, 32, and 64. It should display actual tick values, not stage numbers.
-2. Set it to 0 and confirm the debugger reports OFF/raw input.
-3. Turn **Input buffer debugger** off and confirm changing the delay no longer creates delay-setting diagnostics.
-4. Turn it back on and confirm the current universal value is logged.
-5. Check cold launch, pause, restart, and level entry before adding gameplay hooks.
+This is a substantial engine restoration, so compilation is not the same as confirming all gameplay modes work on-device. The build should first be exercised in practice mode with cube presses/releases, followed by ship, wave, UFO, ball, robot, spider, and swing. If anything crashes or feels wrong, use the debugger and crash-diagnostics files to identify the last active hook.
 
 ## References
 
 - [Windows Achieved](Windows-Achieved.md) — frozen desktop reference.
-- [Previous iOS-capable source snapshot](Legacy-iOS/v2.78.0/) — reference only.
+- [Legacy iOS v2.78.0](Legacy-iOS/v2.78.0/) — port and safety-guard reference.
 - [iOS engine rebuild plan](docs/IOS-ENGINE-PLAN.md).
 
 Practice use only; do not use for verified or leaderboard runs.
