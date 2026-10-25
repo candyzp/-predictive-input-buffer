@@ -70,17 +70,170 @@ namespace {
 #endif
     }
 
-    void enableDeferredIOSHooks() {
 #if defined(GEODE_IS_IOS)
-        for (auto* hook : Mod::get()->getHooks()) {
-            if (!hook->isEnabled()) {
-                auto result = hook->enable();
-                if (!result) {
-                    log::error("[InputBuffer] failed to enable deferred hook '{}'", hook->getDisplayName());
-                }
+    // Startup crash isolation is iOS-only. Windows keeps Geode's normal hook timing.
+    // Keep a hook recorded while it is being tested so a crash on the next launch can
+    // quarantine the most recently enabled hook instead of repeatedly crashing at boot.
+    constexpr int SETTLE_FRAMES = 15;
+    constexpr int TAIL_FRAMES = 180;
+
+    std::filesystem::path guardFile() {
+        return Mod::get()->getSaveDir() / "hook-guard.txt";
+    }
+
+    std::unordered_set<std::string> guardBanned;
+    std::vector<Hook*> guardQueue;
+    size_t guardNext = 0;
+    int guardSettle = 0;
+    bool guardTailStarted = false;
+    std::string guardCurrent;
+
+    // B:<name> is a hook that crashed during its test; E:<name> is currently in flight.
+    void guardWrite(std::string const& inFlight) {
+        std::error_code ec;
+        std::filesystem::create_directories(Mod::get()->getSaveDir(), ec);
+        if (ec) {
+            log::warn("[InputBuffer] guard: could not create save directory: {}", ec.message());
+        }
+
+        std::ofstream out(guardFile(), std::ios::trunc);
+        if (!out) {
+            log::error("[InputBuffer] guard: could not write hook-guard.txt");
+            return;
+        }
+        for (auto const& name : guardBanned) {
+            out << "B:" << name << '\\n';
+        }
+        if (!inFlight.empty()) {
+            out << "E:" << inFlight << '\\n';
+        }
+        out.flush();
+        if (!out) {
+            log::error("[InputBuffer] guard: writing hook-guard.txt failed");
+        }
+    }
+
+    void guardLoad() {
+        guardBanned.clear();
+        std::string crashedOn;
+        std::ifstream in(guardFile());
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.rfind("B:", 0) == 0) {
+                guardBanned.insert(line.substr(2));
+            }
+            else if (line.rfind("E:", 0) == 0) {
+                crashedOn = line.substr(2);
             }
         }
-        log::info("[InputBuffer] iOS hooks enabled from Geode main-thread queue");
+
+        if (!crashedOn.empty()) {
+            guardBanned.insert(crashedOn);
+            log::error("[InputBuffer] guard: previous launch stopped while enabling '{}'; skipping that hook", crashedOn);
+        }
+        guardWrite("");
+    }
+
+    void guardStep() {
+        if (guardSettle > 0) {
+            --guardSettle;
+            queueInMainThread([] { guardStep(); });
+            return;
+        }
+
+        // Give the final hook an extra three seconds of observation after the whole
+        // sequence, because the startup crash can occur just after the menu appears.
+        if (guardNext >= guardQueue.size()) {
+            if (!guardCurrent.empty() && !guardTailStarted) {
+                guardTailStarted = true;
+                guardSettle = TAIL_FRAMES;
+                log::info("[InputBuffer] guard: all hooks tested; watching startup for {} more frames", TAIL_FRAMES);
+                queueInMainThread([] { guardStep(); });
+                return;
+            }
+            if (!guardCurrent.empty()) {
+                guardCurrent.clear();
+                guardWrite("");
+            }
+            log::info("[InputBuffer] guard: done, {} hooks quarantined", guardBanned.size());
+            return;
+        }
+
+        // Reaching this point means the previous hook survived its settle window.
+        // Replace its marker with the next candidate in the same main-thread pass.
+        if (!guardCurrent.empty()) {
+            guardCurrent.clear();
+            guardWrite("");
+        }
+
+        auto* hook = guardQueue[guardNext++];
+        std::string name(hook->getDisplayName());
+
+        if (guardBanned.contains(name)) {
+            log::warn("[InputBuffer] guard: skipping quarantined hook '{}'", name);
+            queueInMainThread([] { guardStep(); });
+            return;
+        }
+
+        // Some loader versions/builds can leave a hook enabled before the deferred
+        // callback. Try to disable it here too, so every candidate is isolated.
+        if (hook->isEnabled()) {
+            auto disabled = hook->disable();
+            if (!disabled) {
+                log::error("[InputBuffer] guard: could not disable '{}' before testing: {}", name, disabled.unwrapErr());
+                guardCurrent = name;
+                guardWrite(name);
+                guardSettle = SETTLE_FRAMES;
+                queueInMainThread([] { guardStep(); });
+                return;
+            }
+        }
+
+        guardCurrent = name;
+        guardWrite(name); // Persist the candidate before it becomes active.
+        log::info("[InputBuffer] guard: enabling '{}'", name);
+        auto result = hook->enable();
+        if (!result) {
+            log::error("[InputBuffer] guard: enabling '{}' failed: {}", name, result.unwrapErr());
+            guardCurrent.clear();
+            guardWrite("");
+            queueInMainThread([] { guardStep(); });
+            return;
+        }
+
+        guardSettle = SETTLE_FRAMES;
+        queueInMainThread([] { guardStep(); });
+    }
+
+    void hookGuardStart() {
+        guardLoad();
+        guardQueue.clear();
+
+        // Disable any hooks that slipped through auto-enable, then test every hook,
+        // including hooks that were already enabled before this callback.
+        for (auto* hook : Mod::get()->getHooks()) {
+            if (hook->isEnabled()) {
+                auto result = hook->disable();
+                if (!result) {
+                    log::error("[InputBuffer] guard: failed to disable early hook '{}': {}",
+                        hook->getDisplayName(), result.unwrapErr());
+                }
+            }
+            guardQueue.push_back(hook);
+        }
+
+        guardNext = 0;
+        guardSettle = 0;
+        guardTailStarted = false;
+        guardCurrent.clear();
+        log::info("[InputBuffer] guard: testing {} hooks ({} quarantined)", guardQueue.size(), guardBanned.size());
+        guardStep();
+    }
+#endif
+
+    void enableDeferredIOSHooks() {
+#if defined(GEODE_IS_IOS)
+        hookGuardStart();
 #endif
     }
 
