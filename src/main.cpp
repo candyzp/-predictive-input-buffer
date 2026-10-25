@@ -4139,14 +4139,14 @@ $on_mod(Loaded) {
     if (Loader::get()->isModLoaded("square3ang.cbfextrapolate")) {
         say("CBF Extrapolate detected: visual only, predictions unaffected");
     }
-    say("v2.79.8 iOS predictive input buffer loaded; universal max delay and gameplay diagnostics enabled.");
+    say("v2.79.10 diagnostic build loaded; gameplay hooks intentionally disabled.");
 #if defined(GEODE_IS_IOS)
     crashDiagnosticCheckpoint("Loaded callback finished; waiting for Geode's menu-loaded event");
     log::info("[InputBuffer] startup: initialization complete; all hooks remain disabled until Geode finishes loading the menu");
     GameEvent(GameEventType::Loaded).listen([] {
         queueInMainThread([] {
-            crashDiagnosticCheckpoint("menu-loaded event fired; enabling gameplay bootstrap");
-            enableGameplayBootstrapHook();
+            crashDiagnosticCheckpoint("menu-loaded event fired; DIAGNOSTIC ISOLATION: all gameplay hooks deliberately remain disabled");
+            log::warn("[InputBuffer] DIAGNOSTIC ISOLATION BUILD: skipped PlayLayer::init bootstrap activation; gameplay buffering is intentionally inactive so launch-stage crash can be isolated");
         });
         return true;
     }).leak();
