@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.77.6 — 2026-10-25
+
+- Remove Click Before Frames' iOS `MenuLayer::init` hook, which added another hook to the launch-time menu initialization chain.
+- Defer gameplay hooks until `PlayLayer::init` has returned, then enable them on the next Cocos frame instead of during an active hook callback.
+- Keep the supported Geode hook APIs and standard `Priority::First` ordering.
+- Build success does not confirm runtime behavior; verify that the game reaches the main menu and can enter a level.
+
 ## v2.77.5 — 2026-10-25
 
 - Use Geode's supported `Hook::setAutoEnable(false)` API to defer all iOS hooks except a `MenuLayer::init` sentinel until startup/resource loading is finished.
