@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.77.5 — 2026-10-25
+
+- Use Geode's supported `Hook::setAutoEnable(false)` API to defer all iOS hooks except a `MenuLayer::init` sentinel until startup/resource loading is finished.
+- Enable deferred hooks through Geode's supported `Hook::enable()` API after the main menu initializes successfully.
+- Switch priority declarations to the documented `setHookPriorityPre` API while keeping the standard `Priority::First` ordering.
+- CI validates compilation only; this specifically targets the startup crash window and is not represented as a confirmed runtime fix.
+
 ## v2.77.4 — 2026-10-25
 
 - Replace the extreme raw hook priority with Geode's standard `Priority::First` for shared gameplay hooks, preserving first-in-chain intent with a documented priority.

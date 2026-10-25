@@ -23,6 +23,9 @@
 #include <Geode/modify/GJBaseGameLayer.hpp>
 #include <Geode/modify/GameObject.hpp>
 #include <Geode/modify/HardStreak.hpp>
+#if defined(GEODE_IS_IOS)
+#include <Geode/modify/MenuLayer.hpp>
+#endif
 #include <Geode/modify/LevelEditorLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
 #include <Geode/modify/PauseLayer.hpp>
@@ -56,6 +59,37 @@ namespace {
     // Prefer Geode's documented first priority over an extreme raw value. This mod
     // shares core gameplay hooks with QOLMod and CBF Extrapolate on iOS.
     constexpr int HOOK_PRIORITY = static_cast<int>(Priority::First);
+
+    // Keep Click Before Frames' gameplay hooks out of the iOS loader/resource phase.
+    // Geode auto-enables $modify hooks by default; on iOS these are enabled only after
+    // the main menu initializes successfully, using the supported Hook API.
+    template <class Modify>
+    void deferIOSHooksUntilMenu(Modify& modify) {
+#if defined(GEODE_IS_IOS)
+        for (auto* hook : modify.getAllHooks()) {
+            hook->setAutoEnable(false);
+        }
+#endif
+    }
+
+    void enableDeferredIOSHooks() {
+#if defined(GEODE_IS_IOS)
+        for (auto* hook : Mod::get()->getHooks()) {
+            // This is the one intentionally auto-enabled startup sentinel.
+            if (hook->getDisplayName() == "MenuLayer::init") {
+                continue;
+            }
+            if (!hook->isEnabled()) {
+                auto result = hook->enable();
+                if (!result) {
+                    log::error("[InputBuffer] failed to enable deferred hook '{}'", hook->getDisplayName());
+                }
+            }
+        }
+        log::info("[InputBuffer] iOS hooks enabled after MenuLayer::init");
+#endif
+    }
+
     constexpr float TICK = 0.25f;
     constexpr size_t PANEL_LINES = 8;
     constexpr int SPIDER_LAND = 12;  // v2.15: ticks on a surface after a spider input = safe
@@ -3674,6 +3708,10 @@ public:
 
 // v2.46: the level complete screen says so if the buffer was on during the attempt.
 class $modify(BufEndLevelLayer, EndLevelLayer) {
+    static void onModify(auto& self) {
+        deferIOSHooksUntilMenu(self);
+    }
+
     void customSetup() {
         EndLevelLayer::customSetup();
         if (!buf.usedThisAttempt) {
@@ -3703,6 +3741,10 @@ class $modify(BufEndLevelLayer, EndLevelLayer) {
 };
 
 class $modify(BufPauseLayer, PauseLayer) {
+    static void onModify(auto& self) {
+        deferIOSHooksUntilMenu(self);
+    }
+
     void customSetup() {
         PauseLayer::customSetup();
         auto* sprite = ButtonSprite::create("Buffer", "bigFont.fnt", BufferMenu::currentTheme().button, 0.8f);
@@ -3719,6 +3761,20 @@ class $modify(BufPauseLayer, PauseLayer) {
         BufferMenu::open();
     }
 };
+
+#if defined(GEODE_IS_IOS)
+// The only Click Before Frames hook active during startup. Gameplay hooks are enabled
+// once the main menu initializes, avoiding interference during Geode's resource mount.
+class $modify(BufMenuLayer, MenuLayer) {
+    bool init() {
+        if (!MenuLayer::init()) {
+            return false;
+        }
+        enableDeferredIOSHooks();
+        return true;
+    }
+};
+#endif
 
 $on_mod(Loaded) {
 #if defined(GEODE_IS_IOS)
@@ -3777,8 +3833,9 @@ $on_mod(Loaded) {
 
 class $modify(BufPlayLayer, PlayLayer) {
     static void onModify(auto& self) {
-        (void)self.setHookPriority("PlayLayer::destroyPlayer", HOOK_PRIORITY);
-        (void)self.setHookPriority("PlayLayer::playEndAnimationToPos", HOOK_PRIORITY);
+        deferIOSHooksUntilMenu(self);
+        (void)self.setHookPriorityPre("PlayLayer::destroyPlayer", HOOK_PRIORITY);
+        (void)self.setHookPriorityPre("PlayLayer::playEndAnimationToPos", HOOK_PRIORITY);
     }
 
     void destroyPlayer(PlayerObject* player, GameObject* object) {
@@ -4030,6 +4087,10 @@ class $modify(BufPlayLayer, PlayLayer) {
 };
 
 class $modify(BufEditorLayer, LevelEditorLayer) {
+    static void onModify(auto& self) {
+        deferIOSHooksUntilMenu(self);
+    }
+
     bool init(GJGameLevel* level, bool noUI) {
         bool ok = LevelEditorLayer::init(level, noUI);
         dropGhosts();
@@ -4039,7 +4100,8 @@ class $modify(BufEditorLayer, LevelEditorLayer) {
 
 class $modify(BufHardStreak, HardStreak) {
     static void onModify(auto& self) {
-        (void)self.setHookPriority("HardStreak::addPoint", HOOK_PRIORITY);
+        deferIOSHooksUntilMenu(self);
+        (void)self.setHookPriorityPre("HardStreak::addPoint", HOOK_PRIORITY);
     }
 
     void addPoint(CCPoint point) {
@@ -4052,7 +4114,8 @@ class $modify(BufHardStreak, HardStreak) {
 
 class $modify(BufEffectGameObject, EffectGameObject) {
     static void onModify(auto& self) {
-        (void)self.setHookPriority("EffectGameObject::triggerObject", HOOK_PRIORITY);
+        deferIOSHooksUntilMenu(self);
+        (void)self.setHookPriorityPre("EffectGameObject::triggerObject", HOOK_PRIORITY);
     }
 
     void triggerObject(GJBaseGameLayer* layer, int uniqueID, gd::vector<int> const* remapKeys) {
@@ -4065,7 +4128,8 @@ class $modify(BufEffectGameObject, EffectGameObject) {
 
 class $modify(BufGameObject, GameObject) {
     static void onModify(auto& self) {
-        (void)self.setHookPriority("GameObject::playShineEffect", HOOK_PRIORITY);
+        deferIOSHooksUntilMenu(self);
+        (void)self.setHookPriorityPre("GameObject::playShineEffect", HOOK_PRIORITY);
     }
 
     void playShineEffect() {
@@ -4078,12 +4142,13 @@ class $modify(BufGameObject, GameObject) {
 
 class $modify(BufPlayerObject, PlayerObject) {
     static void onModify(auto& self) {
-        (void)self.setHookPriority("PlayerObject::playSpiderDashEffect", HOOK_PRIORITY);
+        deferIOSHooksUntilMenu(self);
+        (void)self.setHookPriorityPre("PlayerObject::playSpiderDashEffect", HOOK_PRIORITY);
         // v2.18: run before Click Between Frames, so this sees each physics tick once, with
         // its full dt, and CBF's mid-tick clicks arrive while inRealUpdate is set.
-        (void)self.setHookPriority("PlayerObject::update", HOOK_PRIORITY);
-        (void)self.setHookPriority("PlayerObject::incrementJumps", HOOK_PRIORITY);
-        (void)self.setHookPriority("PlayerObject::ringJump", HOOK_PRIORITY);
+        (void)self.setHookPriorityPre("PlayerObject::update", HOOK_PRIORITY);
+        (void)self.setHookPriorityPre("PlayerObject::incrementJumps", HOOK_PRIORITY);
+        (void)self.setHookPriorityPre("PlayerObject::ringJump", HOOK_PRIORITY);
     }
 
     // Runs 240x/sec per player. Ghost steps (during a simulation) skip straight to
@@ -4270,6 +4335,10 @@ class $modify(BufPlayerObject, PlayerObject) {
 // F6 via the game's own keyboard events: no polling, and it only fires while GD has
 // focus (v1 polled GetAsyncKeyState every physics tick, even when tabbed out).
 class $modify(BufKeyboard, CCKeyboardDispatcher) {
+    static void onModify(auto& self) {
+        deferIOSHooksUntilMenu(self);
+    }
+
     bool dispatchKeyboardMSG(enumKeyCodes key, bool isKeyDown, bool isKeyRepeat, double timestamp) {
         if (isKeyDown && !isKeyRepeat && GameManager::get()->m_playLayer) {
             // v2.75: rebindable in the settings
@@ -4314,13 +4383,14 @@ class $modify(BufKeyboard, CCKeyboardDispatcher) {
 
 class $modify(BufBaseGameLayer, GJBaseGameLayer) {
     static void onModify(auto& self) {
-        (void)self.setHookPriority("GJBaseGameLayer::canBeActivatedByPlayer", HOOK_PRIORITY);
-        (void)self.setHookPriority("GJBaseGameLayer::handleButton", HOOK_PRIORITY);
-        (void)self.setHookPriority("GJBaseGameLayer::collisionCheckObjects", HOOK_PRIORITY);
-        (void)self.setHookPriority("GJBaseGameLayer::playerTouchedRing", HOOK_PRIORITY);
-        (void)self.setHookPriority("GJBaseGameLayer::flipGravity", HOOK_PRIORITY);
-        (void)self.setHookPriority("GJBaseGameLayer::gameEventTriggered", HOOK_PRIORITY);
-        (void)self.setHookPriority("GJBaseGameLayer::playerWillSwitchMode", HOOK_PRIORITY);
+        deferIOSHooksUntilMenu(self);
+        (void)self.setHookPriorityPre("GJBaseGameLayer::canBeActivatedByPlayer", HOOK_PRIORITY);
+        (void)self.setHookPriorityPre("GJBaseGameLayer::handleButton", HOOK_PRIORITY);
+        (void)self.setHookPriorityPre("GJBaseGameLayer::collisionCheckObjects", HOOK_PRIORITY);
+        (void)self.setHookPriorityPre("GJBaseGameLayer::playerTouchedRing", HOOK_PRIORITY);
+        (void)self.setHookPriorityPre("GJBaseGameLayer::flipGravity", HOOK_PRIORITY);
+        (void)self.setHookPriorityPre("GJBaseGameLayer::gameEventTriggered", HOOK_PRIORITY);
+        (void)self.setHookPriorityPre("GJBaseGameLayer::playerWillSwitchMode", HOOK_PRIORITY);
     }
 
     // During a simulation the ghost may use each object once; the real activation
