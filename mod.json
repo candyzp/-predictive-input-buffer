@@ -8,7 +8,14 @@
   "name": "Click Before Frames",
   "developer": "BASU",
   "description": "Temporary iOS startup-isolation build. Prediction is disabled while the iOS engine is rebuilt. Windows reference: Windows-Achieved.md.",
-  "settings": {},
+  "settings": {
+    "tick-rate-debugger": {
+      "type": "bool",
+      "name": "Tick rate",
+      "description": "Show a read-only overlay with player-1 physics tick count, measured update ticks per second (TPS), and the latest update delta time (DT). Does not change game speed.",
+      "default": true
+    }
+  },
   "resources": {
     "sprites": [
       "resources/*.png"
