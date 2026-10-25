@@ -3898,10 +3898,10 @@ class $modify(BufPlayLayer, PlayLayer) {
             buf.panelLines.push_back(line);
         }
 
-#if defined(_WIN32)
-        auto* hint = CCLabelBMFont::create("F6 stage  F7 menu  F8 copy log  F9 console  F10 path  F11 forget", "chatFont.fnt");
+#if defined(GEODE_IS_IOS)
+        auto* hint = CCLabelBMFont::create("Open Buffer from the pause menu for controls and the log", "chatFont.fnt");
 #else
-        auto* hint = CCLabelBMFont::create("Open Buffer from the pause menu for controls", "chatFont.fnt");
+        auto* hint = CCLabelBMFont::create("F6 stage  F7 menu  F8 copy log  F9 console  F10 path  F11 forget", "chatFont.fnt");
 #endif
         hint->setScale(0.45f);
         hint->setColor({ 160, 190, 255 });

@@ -1,6 +1,6 @@
 # Click Before Frames (Geode)
 
-## Keys
+## Desktop keyboard shortcuts
 F6 cycle stage | F7 menu | F8 copy the console log | F9 open/close the in-game console | F10 path view | F11 forget this level's memory
 
 On iOS, open **Buffer** from the pause menu. The menu includes Console, Stats, Copy log, Forget, stage arrows, and Path view. Keyboard shortcuts are desktop-only.
