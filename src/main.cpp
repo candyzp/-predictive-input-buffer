@@ -127,6 +127,7 @@ namespace {
             log::error("[InputBuffer] guard: could not write hook-guard.txt");
             return;
         }
+        out << "V:" << Mod::get()->getVersion().toVString() << '\n';
         for (auto const& name : guardBanned) {
             out << "B:" << name << '\n';
         }
@@ -140,26 +141,42 @@ namespace {
     }
 
     void guardLoad() {
-        guardBanned.clear();
+        std::unordered_set<std::string> savedBanned;
+        std::string savedVersion;
         std::string crashedOn;
         std::ifstream in(guardFile());
         std::string line;
         while (std::getline(in, line)) {
-            if (line.rfind("B:", 0) == 0) {
-                guardBanned.insert(line.substr(2));
+            if (line.rfind("V:", 0) == 0) {
+                savedVersion = line.substr(2);
+            }
+            else if (line.rfind("B:", 0) == 0) {
+                savedBanned.insert(line.substr(2));
             }
             else if (line.rfind("E:", 0) == 0) {
                 crashedOn = line.substr(2);
             }
         }
 
+        const std::string currentVersion = Mod::get()->getVersion().toVString();
+        if (savedVersion != currentVersion) {
+            // Hook names and activation strategy can change between builds. Never let an
+            // old quarantine permanently disable a newly built version.
+            guardBanned.clear();
+            crashedOn.clear();
+            log::info("[InputBuffer] guard: resetting crash history for build {}", currentVersion);
+        }
+        else {
+            guardBanned = std::move(savedBanned);
+        }
+
         if (!crashedOn.empty()) {
             guardBanned.insert(crashedOn);
-            log::error("[InputBuffer] guard: previous launch ended while '{}' was active; quarantining it", crashedOn);
+            log::error("[InputBuffer] guard: previous run ended while '{}' was active; quarantining it", crashedOn);
         }
-        guardSafeMode = guardBanned.contains("PlayLayer::init") || guardBanned.contains("gameplay-setup");
+        guardSafeMode = guardBanned.contains("gameplay-setup");
         if (guardSafeMode) {
-            log::error("[InputBuffer] guard: previous gameplay setup was quarantined; this level will run in pass-through safe mode");
+            log::error("[InputBuffer] guard: gameplay setup was quarantined; this level will run in pass-through safe mode");
         }
         guardWrite("");
     }
@@ -4013,7 +4030,7 @@ $on_mod(Loaded) {
     if (Loader::get()->isModLoaded("square3ang.cbfextrapolate")) {
         say("CBF Extrapolate detected: visual only, predictions unaffected");
     }
-    say("v2.77.9 loaded. Gameplay hooks activate only after entering a level.");
+    say("v2.77.10 loaded. Gameplay hooks activate only after entering a level.");
 #if defined(GEODE_IS_IOS)
     log::info("[InputBuffer] startup: initialization complete; gameplay hooks remain disabled until a level is entered");
 #endif
