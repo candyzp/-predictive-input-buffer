@@ -16,7 +16,9 @@
 //    dead flipGravity hook priority, optional console, in-game console (stage + live log, hidden by default).
 
 #include <Geode/Geode.hpp>
+#ifndef GEODE_IS_IOS
 #include <Geode/modify/CCKeyboardDispatcher.hpp>
+#endif
 #include <Geode/modify/EffectGameObject.hpp>
 #include <Geode/modify/GJBaseGameLayer.hpp>
 #include <Geode/modify/GameObject.hpp>
@@ -3711,7 +3713,7 @@ $on_mod(Loaded) {
     if (Loader::get()->isModLoaded("square3ang.cbfextrapolate")) {
         say("CBF Extrapolate detected: visual only, predictions unaffected");
     }
-    say("v2.77.1 loaded. Use Buffer in the pause menu for touch controls.");
+    say("v2.77.2 loaded. Use Buffer in the pause menu.");
 }
 
 class $modify(BufPlayLayer, PlayLayer) {
@@ -4205,6 +4207,7 @@ class $modify(BufPlayerObject, PlayerObject) {
     }
 };
 
+#ifndef GEODE_IS_IOS
 // F6 via the game's own keyboard events: no polling, and it only fires while GD has
 // focus (v1 polled GetAsyncKeyState every physics tick, even when tabbed out).
 class $modify(BufKeyboard, CCKeyboardDispatcher) {
@@ -4248,6 +4251,7 @@ class $modify(BufKeyboard, CCKeyboardDispatcher) {
         return CCKeyboardDispatcher::dispatchKeyboardMSG(key, isKeyDown, isKeyRepeat, timestamp);
     }
 };
+#endif // !GEODE_IS_IOS
 
 class $modify(BufBaseGameLayer, GJBaseGameLayer) {
     static void onModify(auto& self) {
