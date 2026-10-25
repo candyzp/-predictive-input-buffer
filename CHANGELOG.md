@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.77.3 — 2026-10-25
+
+- Limit input-buffer bookkeeping to the active PlayLayer; non-level GJBaseGameLayer scenes now pass input through untouched.
+- Added iOS startup checkpoints to the Geode log for crash localization.
+
 ## v2.77.2 — 2026-10-25
 
 - Added an iOS-only build workaround to include Geode's FMOD header for generated bindings that otherwise fail to resolve FMOD types.

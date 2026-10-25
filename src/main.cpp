@@ -3719,6 +3719,9 @@ class $modify(BufPauseLayer, PauseLayer) {
 };
 
 $on_mod(Loaded) {
+#if defined(GEODE_IS_IOS)
+    log::info("[InputBuffer] startup: Loaded callback entered");
+#endif
 #if defined(_WIN32)
     buf.console = Mod::get()->getSettingValue<bool>("debug-console");
 #else
@@ -3726,8 +3729,14 @@ $on_mod(Loaded) {
     buf.console = false;
 #endif
     buf.showPath = Mod::get()->getSettingValue<bool>("show-path");
+#if defined(GEODE_IS_IOS)
+    log::info("[InputBuffer] startup: settings read; recovering saved settings");
+#endif
     recoverGlobals();
     buf.stage = std::clamp(static_cast<int>(Mod::get()->getSavedValue<int64_t>("stage", 0)), 0, STAGE_COUNT - 1);
+#if defined(GEODE_IS_IOS)
+    log::info("[InputBuffer] startup: saved settings recovered; reading mod settings");
+#endif
     // v2.62: per-level settings off (switched off once): every level uses the same switches, like v2.43.1
     if (!Mod::get()->getSavedValue<bool>("per-level-v262", false)) {
         Mod::get()->setSettingValue<bool>("per-level-settings", false);
@@ -3741,6 +3750,9 @@ $on_mod(Loaded) {
     }
     readSettings();
     applyStage();
+#if defined(GEODE_IS_IOS)
+    log::info("[InputBuffer] startup: settings applied; checking optional mods");
+#endif
 #if defined(_WIN32)
     if (buf.console) {
         AllocConsole();
@@ -3755,7 +3767,10 @@ $on_mod(Loaded) {
     if (Loader::get()->isModLoaded("square3ang.cbfextrapolate")) {
         say("CBF Extrapolate detected: visual only, predictions unaffected");
     }
-    say("v2.77.2 loaded. Use Buffer in the pause menu for controls and the log.");
+    say("v2.77.3 loaded. Use Buffer in the pause menu for controls and the log.");
+#if defined(GEODE_IS_IOS)
+    log::info("[InputBuffer] startup: initialization complete");
+#endif
 }
 
 class $modify(BufPlayLayer, PlayLayer) {
@@ -4416,14 +4431,20 @@ class $modify(BufBaseGameLayer, GJBaseGameLayer) {
     }
 
     void handleButton(bool down, int button, bool isPlayer1) {
-        if (!buf.simulating && button == 1 && !buf.injecting) {
+        // GJBaseGameLayer is also used by non-level scenes. Only apply input-buffer
+        // bookkeeping/prediction to the actual active PlayLayer; all other layers
+        // must remain untouched, especially during iOS startup and menu gameplay.
+        auto* activeLayer = GameManager::get()->m_playLayer;
+        bool isActivePlayLayer = activeLayer && static_cast<GJBaseGameLayer*>(activeLayer) == this;
+
+        if (!buf.simulating && isActivePlayLayer && button == 1 && !buf.injecting) {
             auto* p1 = this->m_player1;
             if (down || (p1 && (p1->m_isDart || p1->m_isRobot))) {
                 finishDrift("");
             }
             recordRealInput(down, p1);
         }
-        if (!buf.simulating && button == 1 && !buf.injecting) {
+        if (!buf.simulating && isActivePlayLayer && button == 1 && !buf.injecting) {
             // v2.21 performance log: what this click cost, measured around the whole decision.
             buf.simRuns = 0;
             buf.simTicks = 0;
@@ -4439,7 +4460,7 @@ class $modify(BufBaseGameLayer, GJBaseGameLayer) {
                 return;
             }
         }
-        if (!buf.simulating && button == 1) {
+        if (!buf.simulating && isActivePlayLayer && button == 1) {
             benchInput(down);  // v2.75: what the game really gets (your clicks and delayed ones)
         }
         GJBaseGameLayer::handleButton(down, button, isPlayer1);
