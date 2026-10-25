@@ -2,7 +2,7 @@
 
 ## Current state: first isolated hook
 
-The active branch remains iOS-only. Version v2.79.0 is the hook-free startup-isolation baseline; the next increment adds exactly one gameplay hook, `PlayerObject::update`, for read-only tick diagnostics. There is still no input interception, ghost player, or prediction engine.
+The active branch remains iOS-only. Version v2.79.1 is the hook-free startup-isolation baseline; the next increment adds exactly one gameplay hook, `PlayerObject::update`, for read-only tick diagnostics. There is still no input interception, ghost player, or prediction engine.
 
 ## Tick rate overlay
 
