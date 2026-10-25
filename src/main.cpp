@@ -193,10 +193,11 @@ namespace {
 #endif
 
 #if defined(GEODE_IS_IOS)
-    // The only bootstrap hook is enabled after Geode's main menu has initialized.
-    // Every other CBF hook remains disabled through app/resource/menu startup.
+    // PlayLayer::update has a gameplay-specific implementation on iOS. Do not use
+    // PlayLayer::onEnterTransitionDidFinish as a hook: on iOS it can resolve to an
+    // inherited Cocos lifecycle implementation and recurse through the same hook chain.
     bool isGameplayBootstrapHook(std::string_view name) {
-        return name == "PlayLayer::onEnterTransitionDidFinish";
+        return name == "PlayLayer::update";
     }
 #endif
 
@@ -239,6 +240,7 @@ namespace {
     bool guardRunning = false;
     bool guardGameplayActive = false;
     bool guardSafeMode = false;
+    bool guardEntryPending = false;
     std::string guardCurrent;
 
     // B:<name> is quarantined; E:<name> is the hook whose test was in progress.
@@ -319,29 +321,29 @@ namespace {
     }
 
     void enableGameplayBootstrapHook() {
-        crashDiagnosticCheckpoint("enabling only PlayLayer::onEnterTransitionDidFinish after menu initialization");
+        crashDiagnosticCheckpoint("enabling only PlayLayer::update after menu initialization");
         for (auto* hook : Mod::get()->getHooks()) {
             if (!isGameplayBootstrapHook(hook->getDisplayName())) {
                 continue;
             }
 
             if (hook->isEnabled()) {
-                log::warn("[InputBuffer] startup: PlayLayer::onEnterTransitionDidFinish bootstrap already enabled");
+                log::warn("[InputBuffer] startup: PlayLayer::update bootstrap already enabled");
                 return;
             }
 
             auto result = hook->enable();
             if (!result) {
-                log::error("[InputBuffer] startup: could not enable the post-menu level-entry hook: {}", result.unwrapErr());
+                log::error("[InputBuffer] startup: could not enable the post-menu PlayLayer::update bootstrap: {}", result.unwrapErr());
                 return;
             }
 
-            log::info("[InputBuffer] startup: enabled only PlayLayer::onEnterTransitionDidFinish; all other CBF hooks remain disabled until level entry");
-            crashDiagnosticCheckpoint("post-menu level-entry hook enabled; waiting for PlayLayer transition");
+            log::info("[InputBuffer] startup: enabled only PlayLayer::update; other CBF hooks remain disabled until an active level update");
+            crashDiagnosticCheckpoint("post-menu PlayLayer::update bootstrap enabled; waiting for gameplay");
             return;
         }
 
-        log::error("[InputBuffer] startup: could not find PlayLayer::onEnterTransitionDidFinish hook");
+        log::error("[InputBuffer] startup: could not find PlayLayer::update bootstrap hook");
     }
 
     void guardStep() {
@@ -451,6 +453,7 @@ namespace {
 
     void hookGuardStop() {
         guardGameplayActive = false;
+        guardEntryPending = false;
         guardRunning = false;
         guardSettle = 0;
         guardQueue.clear();
@@ -4109,13 +4112,13 @@ $on_mod(Loaded) {
     if (Loader::get()->isModLoaded("square3ang.cbfextrapolate")) {
         say("CBF Extrapolate detected: visual only, predictions unaffected");
     }
-    say("v2.79.13 loaded. No CBF hooks are active during app/menu startup.");
+    say("v2.79.14 loaded. CBF gameplay hooks activate only after a live PlayLayer update.");
 #if defined(GEODE_IS_IOS)
     crashDiagnosticCheckpoint("Loaded callback finished; waiting for Geode's menu-loaded event");
     log::info("[InputBuffer] startup: initialization complete; all hooks remain disabled until Geode finishes loading the menu");
     GameEvent(GameEventType::Loaded).listen([] {
         queueInMainThread([] {
-            crashDiagnosticCheckpoint("menu loaded; enabling only PlayLayer::onEnterTransitionDidFinish bootstrap");
+            crashDiagnosticCheckpoint("menu loaded; enabling only the PlayLayer::update bootstrap");
             enableGameplayBootstrapHook();
         });
         return true;
@@ -4131,29 +4134,42 @@ class $modify(BufPlayLayer, PlayLayer) {
     }
 
 #if defined(GEODE_IS_IOS)
-    void onEnterTransitionDidFinish() {
-        PlayLayer::onEnterTransitionDidFinish();
-        if (guardGameplayActive) {
+    void update(float dt) {
+        // Use PlayLayer's gameplay update as the bootstrap. The inherited lifecycle
+        // callback can resolve to Cocos' shared CCNode implementation on iOS, which
+        // risks a recursive hook chain during menu transitions.
+        PlayLayer::update(dt);
+
+        if (guardGameplayActive || guardEntryPending ||
+            GameManager::get()->m_playLayer != this) {
             return;
         }
 
-        // Read crash history only after a level is on screen, not during app startup.
-        guardLoad();
-        if (guardSafeMode) {
+        guardEntryPending = true;
+        auto* layer = this;
+        queueInMainThread([layer] {
+            guardEntryPending = false;
+            if (guardGameplayActive || GameManager::get()->m_playLayer != layer) {
+                return;
+            }
+
+            guardLoad();
+            if (guardSafeMode) {
+                guardGameplayActive = true;
+                log::error("[InputBuffer] safe mode: skipping mod setup and gameplay hooks; level remains playable");
+                return;
+            }
+
+            // Run setup outside the PlayLayer::update hook chain, then queue other hooks
+            // for a later main-thread pass so TulipHook is not modified mid-dispatch.
             guardGameplayActive = true;
-            log::error("[InputBuffer] safe mode: skipping mod setup and gameplay hooks; level remains playable");
-            return;
-        }
+            guardWrite("gameplay-setup");
+            layer->setupModForLevel(layer->m_level);
+            guardWrite("");
 
-        // Set up the level only after the scene entrance, then queue the hook guard away
-        // from this lifecycle callback's hook-dispatch stack.
-        guardGameplayActive = true;
-        guardWrite("gameplay-setup");
-        setupModForLevel(this->m_level);
-        guardWrite("");
-
-        log::info("[InputBuffer] gameplay entry reached; scheduling gameplay-only hook activation");
-        queueInMainThread([] { hookGuardStart(); });
+            log::info("[InputBuffer] active PlayLayer update detected; scheduling gameplay-hook activation");
+            queueInMainThread([] { hookGuardStart(); });
+        });
     }
 #endif
 
