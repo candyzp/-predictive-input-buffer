@@ -1,8 +1,8 @@
 # Click Before Frames — iOS predictive rebuild
 
-## Current state: temporary iOS hook-registration bisect
+## Current state: predictive input buffer with safer iOS activation
 
-Version **v2.79.11** is a diagnostic build for the iOS pre-menu crash whose native report shows deep recursion in Geode/Tulip's hook dispatcher. On iOS, it compiles only **group A** hook classes: EndLevelLayer, PauseLayer, PlayLayer, LevelEditorLayer, and HardStreak. It excludes **group B**: EffectGameObject, GameObject, PlayerObject, and GJBaseGameLayer. Non-iOS builds retain all hooks. Gameplay activation is intentionally disabled, so this test checks the hook-registration group itself rather than gameplay behavior. If group A still crashes, we will split group A further; if it launches, group B is the leading suspect. This is an isolation build, not a usable input-buffer release.
+Version **v2.79.12** restores the predictive input-buffer engine and universal max-delay slider. The iOS startup path no longer hooks `PlayLayer::init`: per-level setup begins from `PlayLayer::onEnterTransitionDidFinish`, and the gameplay hooks are activated after that callback returns. `PlayLayer::onQuit` remains for cleanup. The crash-diagnostics initialization-order fix is retained. This change is based on the source history and the native stack showing recursion in Geode/TulipHook's handler; a successful compile is not the same as device confirmation.
 
 ## How the tick value actually works
 
