@@ -18,9 +18,6 @@
 #include <Geode/Geode.hpp>
 #include <string_view>
 #include <Geode/loader/GameEvent.hpp>
-#ifndef GEODE_IS_IOS
-#include <Geode/modify/CCKeyboardDispatcher.hpp>
-#endif
 #include <Geode/modify/EffectGameObject.hpp>
 #include <Geode/modify/GJBaseGameLayer.hpp>
 #include <Geode/modify/GameObject.hpp>
@@ -34,9 +31,6 @@
 #include <map>
 #include <mutex>
 #include <Geode/modify/PlayerObject.hpp>
-#if defined(_WIN32)
-#include <Windows.h>
-#endif
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -616,7 +610,6 @@ namespace {
         bool perfMode = false;   // v2.71: performance mode
         double userBudget = 6.0; // v2.75: the budget from the settings (budgetMs is this click's)
         bool autoBudget = true;  // v2.75: budget follows the frame rate
-        int keys[6] = { 0, 0, 0, 0, 0, 0 };  // v2.75: stage, menu, export, console, path, forget
         std::unordered_set<GameObject*> simDisabled;  // v2.75: objects a toggle orb switched off in this prediction
         std::deque<std::string> logLines;
 
@@ -641,7 +634,6 @@ namespace {
         int rapid = 0;
 
         bool smart = true;
-        bool console = false;
         double budgetMs = 6.0;
         bool practiceOnly = true;    // v2.1: only buffer in practice mode
         int groundHorizon = 130;     // v2.1: how far ahead cube/ball/spider predictions look
@@ -857,9 +849,6 @@ namespace {
         while (buf.logLines.size() > PANEL_LINES) {
             buf.logLines.pop_front();
         }
-        if (buf.console) {
-            std::printf("[InputBuffer] %s\n", msg.c_str());
-        }
         // v2.71: redrawn once per physics step instead of on every line (a click that logs
         // 4 lines rebuilt all 8 labels 4 times)
         buf.panelDirty = buf.panelOpen;
@@ -875,36 +864,11 @@ namespace {
         buf.releaseShift = 0;
     }
 
-    // v2.75: "F6", "G", "7", "None" -> key code (0 = unbound)
-    int parseKey(std::string name) {
-        for (auto& c : name) {
-            c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-        }
-        if (name.size() >= 2 && name[0] == 'F') {
-            int n = std::atoi(name.c_str() + 1);
-            if (n >= 1 && n <= 12) {
-                return KEY_F1 + (n - 1);
-            }
-        }
-        if (name.size() == 1 && name[0] >= 'A' && name[0] <= 'Z') {
-            return KEY_A + (name[0] - 'A');
-        }
-        if (name.size() == 1 && name[0] >= '0' && name[0] <= '9') {
-            return KEY_Zero + (name[0] - '0');
-        }
-        return 0;
-    }
-
     void readSettings() {
         auto* mod = Mod::get();
         buf.smart = mod->getSettingValue<bool>("smart-prediction");
         buf.budgetMs = mod->getSettingValue<double>("sim-budget-ms");
         buf.autoBudget = mod->getSettingValue<bool>("auto-budget");
-        // v2.75 rebindable keys
-        char const* keyNames[] = { "key-stage", "key-menu", "key-export", "key-console", "key-path", "key-forget" };
-        for (int i = 0; i < 6; ++i) {
-            buf.keys[i] = parseKey(mod->getSettingValue<std::string>(keyNames[i]));
-        }
         buf.practiceOnly = mod->getSettingValue<bool>("practice-only");
         buf.groundHorizon = static_cast<int>(mod->getSettingValue<int64_t>("ground-horizon"));
         buf.waveHorizon = static_cast<int>(mod->getSettingValue<int64_t>("wave-horizon"));
@@ -4068,7 +4032,6 @@ protected:
         m_status->setScale(0.55f);
         m_status->setColor(m_t.accent);
         m_mainLayer->addChildAtPosition(m_status, Anchor::Bottom, { 0.f, 56.f });
-#if defined(GEODE_IS_IOS)
         m_buttonMenu->addChildAtPosition(textButton("Settings", menu_selector(BufferMenu::onAllSettings), 0.42f), Anchor::Bottom,
             { -148.f, 26.f });
         m_buttonMenu->addChildAtPosition(textButton("Stats", menu_selector(BufferMenu::onStats), 0.42f), Anchor::Bottom,
@@ -4079,15 +4042,6 @@ protected:
             { 74.f, 26.f });
         m_buttonMenu->addChildAtPosition(textButton("Forget", menu_selector(BufferMenu::onForget), 0.42f), Anchor::Bottom,
             { 148.f, 26.f });
-#else
-        m_buttonMenu->addChildAtPosition(textButton("Settings", menu_selector(BufferMenu::onAllSettings), 0.55f), Anchor::Bottom,
-            { -132.f, 26.f });
-        m_buttonMenu->addChildAtPosition(textButton("Stats", menu_selector(BufferMenu::onStats), 0.55f), Anchor::Bottom, { -45.f, 26.f });
-        m_buttonMenu->addChildAtPosition(textButton("Copy log", menu_selector(BufferMenu::onCopyLog), 0.55f), Anchor::Bottom,
-            { 37.f, 26.f });
-        m_buttonMenu->addChildAtPosition(textButton("Forget", menu_selector(BufferMenu::onForget), 0.55f), Anchor::Bottom,
-            { 124.f, 26.f });
-#endif
 
         // presets + run check
         char const* presets[] = { "Safe", "Balanced", "Aggressive" };
@@ -4194,12 +4148,6 @@ $on_mod(Loaded) {
     crashDiagnosticCheckpoint("mod Loaded callback entered");
     log::info("[InputBuffer] startup: Loaded callback entered");
 #endif
-#if defined(_WIN32)
-    buf.console = Mod::get()->getSettingValue<bool>("debug-console");
-#else
-    // The separate native console is Windows-only; the in-game panel works on iOS.
-    buf.console = false;
-#endif
     buf.showPath = Mod::get()->getSettingValue<bool>("show-path");
 #if defined(GEODE_IS_IOS)
     crashDiagnosticCheckpoint("settings read; recovering saved settings");
@@ -4228,21 +4176,14 @@ $on_mod(Loaded) {
     crashDiagnosticCheckpoint("settings applied; checking optional mods");
     log::info("[InputBuffer] startup: settings applied; checking optional mods");
 #endif
-#if defined(_WIN32)
-    if (buf.console) {
-        AllocConsole();
-        FILE* out = nullptr;
-        freopen_s(&out, "CONOUT$", "w", stdout);
-        SetConsoleTitleA("Click Before Frames - Live Console");
-    }
-#endif
+
     if (Loader::get()->isModLoaded("syzzi.click_between_frames")) {
         say("Click Between Frames detected: mid-tick sync {}", buf.cbfSync ? "on" : "off");
     }
     if (Loader::get()->isModLoaded("square3ang.cbfextrapolate")) {
         say("CBF Extrapolate detected: visual only, predictions unaffected");
     }
-    say("v2.77.14 loaded. Startup crash diagnostics are saved to the mod folder.");
+    say("v2.78.0 iOS build loaded. Startup crash diagnostics are saved to the mod folder.");
 #if defined(GEODE_IS_IOS)
     crashDiagnosticCheckpoint("Loaded callback finished; waiting for Geode's menu-loaded event");
     log::info("[InputBuffer] startup: initialization complete; all hooks remain disabled until Geode finishes loading the menu");
@@ -4398,11 +4339,7 @@ class $modify(BufPlayLayer, PlayLayer) {
             buf.panelLines.push_back(line);
         }
 
-#if defined(GEODE_IS_IOS)
         auto* hint = CCLabelBMFont::create("Open Buffer from the pause menu for controls and the log", "chatFont.fnt");
-#else
-        auto* hint = CCLabelBMFont::create("F6 stage  F7 menu  F8 copy log  F9 console  F10 path  F11 forget", "chatFont.fnt");
-#endif
         hint->setScale(0.45f);
         hint->setColor({ 160, 190, 255 });
         hint->setAnchorPoint({ 0.5f, 0.5f });
@@ -4625,7 +4562,7 @@ class $modify(BufPlayerObject, PlayerObject) {
     }
 
     // Runs 240x/sec per player. Ghost steps (during a simulation) skip straight to
-    // the original; F6 is no longer polled here (see BufKeyboard below).
+    // the original; desktop keyboard polling was removed from the iOS port.
     void update(float dt) {
         if (buf.simulating) {
             PlayerObject::update(dt);
@@ -4804,54 +4741,6 @@ class $modify(BufPlayerObject, PlayerObject) {
     }
 };
 
-#ifndef GEODE_IS_IOS
-// F6 via the game's own keyboard events: no polling, and it only fires while GD has
-// focus (v1 polled GetAsyncKeyState every physics tick, even when tabbed out).
-class $modify(BufKeyboard, CCKeyboardDispatcher) {
-    static void onModify(auto& self) {
-        deferIOSHooksUntilQueue(self);
-    }
-
-    bool dispatchKeyboardMSG(enumKeyCodes key, bool isKeyDown, bool isKeyRepeat, double timestamp) {
-        if (isKeyDown && !isKeyRepeat && GameManager::get()->m_playLayer) {
-            // v2.75: rebindable in the settings
-            int k = static_cast<int>(key);
-            auto is = [&](int i) { return buf.keys[i] != 0 && k == buf.keys[i]; };
-            if (is(0)) {
-                cycleStage();
-            }
-            else if (is(1)) {
-                auto* layer = GameManager::get()->m_playLayer;
-                if (layer && !layer->m_isPaused) {
-                    layer->pauseGame(true);
-                }
-                BufferMenu::open();
-            }
-            else if (is(3)) {
-                buf.panelOpen = !buf.panelOpen;
-                refreshPanel();
-            }
-            else if (is(2)) {
-                exportConsole();
-            }
-            else if (is(5)) {
-                memory.clear();
-                pending.active = false;
-                memoryDirty = true;
-                saveMemory();
-                say("memory for this level cleared");
-            }
-            else if (is(4)) {
-                buf.showPath = !buf.showPath;
-                if (buf.pathNode) {
-                    buf.pathNode->clear();
-                }
-                say("path view {}", buf.showPath ? "on" : "off");
-            }
-        }
-        return CCKeyboardDispatcher::dispatchKeyboardMSG(key, isKeyDown, isKeyRepeat, timestamp);
-    }
-};
 #endif // !GEODE_IS_IOS
 
 class $modify(BufBaseGameLayer, GJBaseGameLayer) {
