@@ -21,8 +21,8 @@ jobs:
             os: macos-latest
             target: iOS
             # Current generated iOS bindings use FMOD typedefs without including fmod.h.
-            # Force-include the SDK header for this build only; gameplay logic is unchanged.
-            configureArgs: "-DCMAKE_CXX_FLAGS=-include\\ fmod.h"
+            # Use an absolute header path so CMake's initial compiler check can find it too.
+            configureArgs: "-DCMAKE_CXX_FLAGS=-include\\ $GEODE_SDK/loader/include/Geode/fmod/fmod.h"
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     steps:
