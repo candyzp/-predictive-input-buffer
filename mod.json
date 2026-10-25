@@ -3,11 +3,11 @@
   "gd": {
     "ios": "2.2081"
   },
-  "version": "v2.79.9",
+  "version": "v2.79.10",
   "id": "basu.input-buffer",
   "name": "Click Before Frames",
   "developer": "BASU",
-  "description": "iOS predictive input buffer based on the Windows reference engine. One universal max input-delay slider caps predictions for every supported gameplay mode. Crash diagnostics initialize after the mod Loaded callback, not during dylib static initialization; gameplay hooks stay crash-guarded.",
+  "description": "iOS predictive input buffer based on the Windows reference engine. One universal max input-delay slider caps predictions for every supported gameplay mode. Temporary iOS startup-isolation build: gameplay hooks remain disabled to diagnose a Geode hook-dispatch recursion crash before the menu.",
   "settings": {
     "max-delay-ticks": {
       "type": "int",
