@@ -132,7 +132,7 @@ namespace {
             return;
         }
         auto* hook = guardQueue[guardNext++];
-        std::string name = hook->getDisplayName();
+        std::string name(hook->getDisplayName());
         if (guardBanned.contains(name)) {
             log::warn("[InputBuffer] guard: skipping banned hook '{}'", name);
             queueInMainThread([] { guardStep(); });
