@@ -1,8 +1,8 @@
 # Click Before Frames — iOS predictive rebuild
 
-## Current state: predictive input buffer with safer iOS activation
+## Current state: predictive input buffer with deferred iOS startup hooks
 
-Version **v2.79.12** restores the predictive input-buffer engine and universal max-delay slider. The iOS startup path no longer hooks `PlayLayer::init`: per-level setup begins from `PlayLayer::onEnterTransitionDidFinish`, and the gameplay hooks are activated after that callback returns. `PlayLayer::onQuit` remains for cleanup. The crash-diagnostics initialization-order fix is retained. This change is based on the source history and the native stack showing recursion in Geode/TulipHook's handler; a successful compile is not the same as device confirmation.
+Version **v2.79.13** retains the predictive engine and the single universal max-delay setting. All Click Before Frames hooks are kept disabled during app startup and menu loading. After Geode's `GameEventType::Loaded` event, the mod queues only `PlayLayer::onEnterTransitionDidFinish`; the remaining gameplay hooks are activated incrementally only after a level-entry transition. This avoids installing the mod's full gameplay hook set in the launch/menu window. The native crash signature also resembles a known JIT-less TulipHook recursion issue, so the exact initiating hook is not yet confirmed.
 
 ## How the tick value actually works
 
