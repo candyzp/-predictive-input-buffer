@@ -4025,17 +4025,20 @@ class $modify(BufPlayLayer, PlayLayer) {
         (void)self.setHookPriorityPre("PlayLayer::playEndAnimationToPos", HOOK_PRIORITY);
     }
 
+#if defined(GEODE_IS_IOS)
     void onEnterTransitionDidFinish() {
         PlayLayer::onEnterTransitionDidFinish();
-#if defined(GEODE_IS_IOS)
         if (guardSafeMode || guardGameplayActive) {
             return;
         }
+        // PlayLayer's custom initialization survived. Clear its marker before testing
+        // other hooks, so a crash between stages won't blame the entry sentinel.
+        guardWrite("");
         guardGameplayActive = true;
         log::info("[InputBuffer] gameplay entry reached; scheduling gameplay-only hook activation");
         queueInMainThread([] { hookGuardStart(); });
-#endif
     }
+#endif
 
     void destroyPlayer(PlayerObject* player, GameObject* object) {
         if (buf.simulating && isGhost(player)) {
