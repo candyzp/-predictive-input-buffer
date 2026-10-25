@@ -29,7 +29,9 @@
 #include <Geode/ui/Popup.hpp>
 #include <map>
 #include <Geode/modify/PlayerObject.hpp>
+#if defined(_WIN32)
 #include <Windows.h>
+#endif
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -3673,7 +3675,12 @@ class $modify(BufPauseLayer, PauseLayer) {
 };
 
 $on_mod(Loaded) {
+#if defined(_WIN32)
     buf.console = Mod::get()->getSettingValue<bool>("debug-console");
+#else
+    // The separate native console is Windows-only; the in-game panel works on iOS.
+    buf.console = false;
+#endif
     buf.showPath = Mod::get()->getSettingValue<bool>("show-path");
     recoverGlobals();
     buf.stage = std::clamp(static_cast<int>(Mod::get()->getSavedValue<int64_t>("stage", 0)), 0, STAGE_COUNT - 1);
@@ -3690,19 +3697,21 @@ $on_mod(Loaded) {
     }
     readSettings();
     applyStage();
+#if defined(_WIN32)
     if (buf.console) {
         AllocConsole();
         FILE* out = nullptr;
         freopen_s(&out, "CONOUT$", "w", stdout);
         SetConsoleTitleA("Click Before Frames - Live Console");
     }
+#endif
     if (Loader::get()->isModLoaded("syzzi.click_between_frames")) {
         say("Click Between Frames detected: mid-tick sync {}", buf.cbfSync ? "on" : "off");
     }
     if (Loader::get()->isModLoaded("square3ang.cbfextrapolate")) {
         say("CBF Extrapolate detected: visual only, predictions unaffected");
     }
-    say("v2.77 loaded. F6 cycles: 0.5f -> 1f -> 2f -> 4f -> 6f -> 8f -> custom -> off");
+    say("v2.77.1 loaded. Use Buffer in the pause menu for touch controls.");
 }
 
 class $modify(BufPlayLayer, PlayLayer) {
@@ -3849,7 +3858,11 @@ class $modify(BufPlayLayer, PlayLayer) {
             buf.panelLines.push_back(line);
         }
 
+#if defined(_WIN32)
         auto* hint = CCLabelBMFont::create("F6 stage  F7 menu  F8 copy log  F9 console  F10 path  F11 forget", "chatFont.fnt");
+#else
+        auto* hint = CCLabelBMFont::create("Open Buffer from the pause menu for controls", "chatFont.fnt");
+#endif
         hint->setScale(0.45f);
         hint->setColor({ 160, 190, 255 });
         hint->setAnchorPoint({ 0.5f, 0.5f });
