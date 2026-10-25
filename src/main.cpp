@@ -58,14 +58,33 @@ namespace {
     // shares core gameplay hooks with QOLMod and CBF Extrapolate on iOS.
     constexpr int HOOK_PRIORITY = static_cast<int>(Priority::First);
 
-    // Keep every Click Before Frames hook disabled while Geode is loading mods/resources.
-    // No sentinel hook is installed; defer activation to Geode's main-thread queue from
-    // the Loaded callback, after this callback has returned.
+#if defined(GEODE_IS_IOS)
+    // Only these tiny PlayLayer lifecycle hooks may be installed while the game is in
+    // menus. Their bodies run only when a level is entered / exited. Every gameplay
+    // prediction, object, player, pause UI, and editor hook stays disabled until entry.
+    bool isGameplayLifecycleHook(std::string_view name) {
+        return name == "PlayLayer::init" ||
+            name == "PlayLayer::onEnterTransitionDidFinish" ||
+            name == "PlayLayer::onQuit";
+    }
+#endif
+
     template <class Modify>
-    void deferIOSHooksUntilQueue(Modify& modify) {
+    void deferIOSHooksUntilQueue(Modify& modify, bool allowGameplayLifecycleHooks = false) {
 #if defined(GEODE_IS_IOS)
         for (auto* hook : modify.getAllHooks()) {
-            hook->setAutoEnable(false);
+            std::string name(hook->getDisplayName());
+            bool keep = allowGameplayLifecycleHooks && isGameplayLifecycleHook(name);
+            hook->setAutoEnable(keep);
+
+            // Auto-enable can already have happened by the time onModify is reached on
+            // some builds. Explicitly turn every non-sentinel hook off as well.
+            if (!keep && hook->isEnabled()) {
+                auto result = hook->disable();
+                if (!result) {
+                    log::error("[InputBuffer] startup: could not disable early hook '{}': {}", name, result.unwrapErr());
+                }
+            }
         }
 #endif
     }
