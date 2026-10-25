@@ -1,8 +1,8 @@
 # Click Before Frames — iOS predictive rebuild
 
-## Current state: temporary iOS startup-isolation build
+## Current state: temporary iOS hook-registration bisect
 
-Version **v2.79.10** is a diagnostic build for an iOS crash before the Geometry Dash menu. The native report shows deep recursion in Geode/Tulip's hook dispatcher; the responsible hook has not yet been identified. This build deliberately leaves every gameplay hook disabled, including the `PlayLayer::init` bootstrap, while preserving startup checkpoints. **Input buffering is intentionally inactive in this diagnostic build.** If it reaches the menu, the next step is to isolate hook activation/interactions. If it still crashes, use `crash-diagnostics/last-state.txt` if present to identify the last logged startup phase.
+Version **v2.79.11** is a diagnostic build for the iOS pre-menu crash whose native report shows deep recursion in Geode/Tulip's hook dispatcher. On iOS, it compiles only **group A** hook classes: EndLevelLayer, PauseLayer, PlayLayer, LevelEditorLayer, and HardStreak. It excludes **group B**: EffectGameObject, GameObject, PlayerObject, and GJBaseGameLayer. Non-iOS builds retain all hooks. Gameplay activation is intentionally disabled, so this test checks the hook-registration group itself rather than gameplay behavior. If group A still crashes, we will split group A further; if it launches, group B is the leading suspect. This is an isolation build, not a usable input-buffer release.
 
 ## How the tick value actually works
 
