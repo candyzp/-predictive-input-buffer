@@ -3806,10 +3806,14 @@ $on_mod(Loaded) {
     }
     say("v2.77.7 loaded. Use Buffer in the pause menu for controls and the log.");
 #if defined(GEODE_IS_IOS)
-    log::info("[InputBuffer] startup: initialization complete; queueing deferred hooks");
-    queueInMainThread([] {
-        enableDeferredIOSHooks();
-    });
+    log::info("[InputBuffer] startup: initialization complete; waiting for Geode Loaded event");
+    GameEvent(GameEventType::Loaded).listen([] {
+        // The Loaded event is posted after MenuLayer::init returns. Queue one more
+        // main-thread pass so hook activation cannot happen inside that event's call chain.
+        queueInMainThread([] {
+            enableDeferredIOSHooks();
+        });
+    }).leak();
 #endif
 }
 
