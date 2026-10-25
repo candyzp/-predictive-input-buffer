@@ -54,11 +54,11 @@ Before enabling a mode by default: successful iOS CI build; cold-launch tests; l
 
 ## Current milestone
 
-v2.79.2 is a diagnostic harness: one read-only PlayerObject::update hook, a measured TPS/DT overlay, and a target-TPS slider for validating setting reads. Prediction and input interception remain disabled.
+v2.79.3 is a no-hook input-buffer stage slider prototype. The `Tick rate` slider selects the exact buffer stage set 2/2, 4/4, 8/8, 16/8, OFF and logs changes. It does not control native game physics TPS.
 
 
-## Increment 1: tick-rate probe
+## Increment 1: buffer-stage control
 
-The current active implementation adds one `PlayerObject::update` hook and no others. It calls the original update exactly once and measures only player 1. The optional debugger reports update count, measured actual TPS, target TPS, and latest `dt`. The draggable target-TPS setting (30–480, default 240) is read live and shown in the overlay, but does not alter native game physics or inputs. Validate slider updates, cold launch, and level lifecycle before introducing further hooks.
+The active implementation has no gameplay hooks. It verifies that a draggable Geode integer slider maps to the existing input-buffer stage sequence and logs each selection. Four ticks equal one frame at 60 FPS. The stage sequence is Stage 1 (2 All / 2 Wave), Stage 2 (4/4), Stage 3 (8/8), Stage 4 (16/8), and Stage 5 OFF (100% raw input).
 
-The next stage may use the target setting only inside an isolated prediction stepper. Do not implement a game-clock / `dt` hack in the PlayerObject hook. Keep actual TPS measurement distinct from the requested target. Each subsequent hook must be its own separately testable increment.
+This is a control harness only: it does not delay inputs while the prediction and input scheduler are absent. After slider persistence and logging pass on iOS, increment 2 can connect the stored stage selection to the isolated input scheduler. Do not change the game's global physics clock or player update `dt` to implement buffer delay.

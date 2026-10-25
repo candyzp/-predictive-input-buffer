@@ -3,25 +3,28 @@
   "gd": {
     "ios": "2.2081"
   },
-  "version": "v2.79.2",
+  "version": "v2.79.3",
   "id": "basu.input-buffer",
   "name": "Click Before Frames",
   "developer": "BASU",
-  "description": "iOS diagnostic probe: measured tick debugger plus adjustable target-TPS setting. Prediction and input interception remain disabled. Windows reference: Windows-Achieved.md.",
+  "description": "iOS input-buffer stage slider prototype. Selects and logs the delay stage; input interception remains disabled until the engine rebuild is ready.",
   "settings": {
-    "tick-rate-debugger": {
-      "type": "bool",
-      "name": "Tick-rate debugger",
-      "description": "Show the measured player-1 update rate, update delta time, tick count, and selected target TPS. Read-only; does not change native game physics.",
-      "default": true
-    },
-    "tick-rate-adjuster": {
+    "tick-rate-stage": {
       "type": "int",
-      "name": "Tick-rate adjuster (probe)",
-      "description": "Draggable target-TPS setting for testing the rate control and live settings updates. The debugger shows the selected target beside measured TPS. This probe does not change the game's native physics rate; the future prediction engine will consume a validated rate.",
-      "default": 240,
-      "min": 30,
-      "max": 480
+      "name": "Tick rate",
+      "description": "Select the input-buffer delay stage: 2/2 → 4/4 → 8/8 → 16/8 → OFF. Four ticks = one frame at 60 FPS. This chooses the delay window, not Geometry Dash's native physics TPS.",
+      "default": 0,
+      "min": 0,
+      "max": 4,
+      "control": {
+        "arrows": false,
+        "arrow-step": 1,
+        "big-arrows": false,
+        "big-arrow-step": 1,
+        "slider": true,
+        "slider-step": 1,
+        "input": false
+      }
     }
   },
   "resources": {

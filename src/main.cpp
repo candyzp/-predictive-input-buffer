@@ -1,105 +1,67 @@
 #include <Geode/Geode.hpp>
-#include <Geode/modify/PlayerObject.hpp>
-#include <chrono>
+#include <Geode/loader/SettingV3.hpp>
+#include <algorithm>
 #include <cstdint>
+#include <string>
 
 using namespace geode::prelude;
 
 namespace {
-    // Unique child tag for the optional read-only in-game tick overlay.
-    constexpr int TICK_RATE_DEBUG_TAG = 0x43424654;
-}
+    struct BufferStage {
+        int ticksAll;
+        int ticksWave;
+        bool enabled;
+    };
 
-// First isolated gameplay hook: observe the real player update only.
-// No input interception, ghost player, prediction, or writes to game state.
-class $modify(TickRateDebuggerPlayerObject, PlayerObject) {
-    void update(float dt) {
-        // Preserve the game update exactly once before doing diagnostic work.
-        PlayerObject::update(dt);
+    // These are the input-buffer delay stages from the existing mod's stage cycle.
+    // Four simulation ticks equal one frame at 60 FPS.
+    constexpr BufferStage STAGES[] = {
+        { 2,  2, true  },
+        { 4,  4, true  },
+        { 8,  8, true  },
+        { 16, 8, true  },
+        { 0,  0, false },
+    };
+    constexpr int STAGE_COUNT = static_cast<int>(std::size(STAGES));
 
-        auto* manager = GameManager::get();
-        auto* layer = manager ? manager->m_playLayer : nullptr;
-        if (!layer || layer->m_player1 != this) {
-            return; // Count player 1 only, not dual-player or ghost updates.
-        }
+    int clampStage(int64_t value) {
+        return std::clamp(static_cast<int>(value), 0, STAGE_COUNT - 1);
+    }
 
-        using Clock = std::chrono::steady_clock;
-        static PlayLayer* sampledLayer = nullptr;
-        static uint64_t ticks = 0;
-        static uint64_t sampleTicks = 0;
-        static double measuredTicksPerSecond = 0.0;
-        static float latestDeltaSeconds = 0.0f;
-        static auto sampleStart = Clock::now();
-        static auto lastTextUpdate = Clock::now();
-        static auto lastSettingPoll = Clock::time_point{};
-        static bool debuggerEnabled = true;
-        static int targetTPS = 240;
+    void logStage(int64_t value, bool startup) {
+        const int index = clampStage(value);
+        const auto& stage = STAGES[index];
 
-        const auto now = Clock::now();
-        if (sampledLayer != layer) {
-            sampledLayer = layer;
-            ticks = 0;
-            sampleTicks = 0;
-            measuredTicksPerSecond = 0.0;
-            sampleStart = now;
-            lastTextUpdate = now;
-        }
-
-        ++ticks;
-        ++sampleTicks;
-        latestDeltaSeconds = dt;
-
-        const double sampleSeconds = std::chrono::duration<double>(now - sampleStart).count();
-        if (sampleSeconds >= 0.5) {
-            // Avoid reporting a false low rate after a long pause or app suspension.
-            measuredTicksPerSecond = sampleSeconds <= 1.0
-                ? static_cast<double>(sampleTicks) / sampleSeconds
-                : 0.0;
-            sampleTicks = 0;
-            sampleStart = now;
-        }
-
-        // Poll settings infrequently; do not do a settings lookup on every physics tick.
-        if (lastSettingPoll.time_since_epoch().count() == 0 ||
-            now - lastSettingPoll >= std::chrono::milliseconds(250)) {
-            debuggerEnabled = Mod::get()->getSettingValue<bool>("tick-rate-debugger");
-            targetTPS = static_cast<int>(Mod::get()->getSettingValue<int64_t>("tick-rate-adjuster"));
-            lastSettingPoll = now;
-        }
-
-        auto* node = layer->getChildByTag(TICK_RATE_DEBUG_TAG);
-        if (!debuggerEnabled) {
-            if (node) node->setVisible(false);
+        if (!stage.enabled) {
+            log::info("[InputBuffer] {}: STAGE 5: OFF (100% Raw Input)",
+                startup ? "Starting Mode" : "Tick rate slider");
             return;
         }
 
-        auto* label = typeinfo_cast<CCLabelBMFont*>(node);
-        if (!label) {
-            label = CCLabelBMFont::create("", "chatFont.fnt");
-            if (!label) return;
-            label->setTag(TICK_RATE_DEBUG_TAG);
-            label->setAnchorPoint({ 0.5f, 1.0f });
-            label->setColor({ 150, 220, 255 });
-            label->setOpacity(235);
-            label->setScale(0.48f);
-            auto size = CCDirector::get()->getWinSize();
-            label->setPosition({ size.width / 2.0f, size.height - 8.0f });
-            label->limitLabelWidth(size.width - 20.0f, 0.48f, 0.28f);
-            layer->addChild(label, 10000);
-        }
-        label->setVisible(true);
+        const float allFrames = static_cast<float>(stage.ticksAll) / 4.0f;
+        const float waveFrames = static_cast<float>(stage.ticksWave) / 4.0f;
 
-        // Refresh text at 10 Hz rather than rebuilding strings every physics tick.
-        if (now - lastTextUpdate >= std::chrono::milliseconds(100)) {
-            auto message = fmt::format(
-                "TICK {}  |  ACTUAL {:.1f} TPS  |  TARGET {} TPS\nDT {:.2f} ms",
-                ticks,
-                measuredTicksPerSecond,
-                targetTPS,
-                latestDeltaSeconds * 1000.0f
-            );
-            label->setString(message.c_str());
-            lastTextUpdate = now;
+        if (startup) {
+            log::info("[InputBuffer] Starting Mode: STAGE {} ({} All / {} Wave)",
+                index + 1, stage.ticksAll, stage.ticksWave);
+        }
+        else if (stage.ticksAll == stage.ticksWave) {
+            log::info("[InputBuffer] Tick rate slider -> STAGE {}: {} Ticks All | {} Ticks Wave ({:.1f}f @ 60fps)",
+                index + 1, stage.ticksAll, stage.ticksWave, allFrames);
+        }
+        else {
+            log::info("[InputBuffer] Tick rate slider -> STAGE {}: {} Ticks All | {} Ticks Wave ({:.1f}f / {:.1f}f @ 60fps)",
+                index + 1, stage.ticksAll, stage.ticksWave, allFrames, waveFrames);
         }
     }
-};
+}
+
+// This milestone deliberately has NO gameplay hooks and does not delay inputs yet.
+// It validates the actual stage slider and logs the selected buffer window.
+$on_mod(Loaded) {
+    logStage(Mod::get()->getSettingValue<int64_t>("tick-rate-stage"), true);
+
+    listenForSettingChanges("tick-rate-stage", [](int64_t value) {
+        logStage(value, false);
+    });
+}
