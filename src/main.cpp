@@ -70,17 +70,105 @@ namespace {
 #endif
     }
 
-    void enableDeferredIOSHooks() {
 #if defined(GEODE_IS_IOS)
-        for (auto* hook : Mod::get()->getHooks()) {
-            if (!hook->isEnabled()) {
-                auto result = hook->enable();
-                if (!result) {
-                    log::error("[InputBuffer] failed to enable deferred hook '{}'", hook->getDisplayName());
-                }
+    constexpr int SETTLE_FRAMES = 15;
+
+    std::filesystem::path guardFile() {
+        return Mod::get()->getSaveDir() / "hook-guard.txt";
+    }
+
+    std::unordered_set<std::string> guardBanned;
+    std::vector<Hook*> guardQueue;
+    size_t guardNext = 0;
+    int guardSettle = 0;
+    std::string guardCurrent;
+
+    // B:<name> = banned hook, E:<name> = hook that was being enabled when the file was written
+    void guardWrite(std::string const& inFlight) {
+        std::error_code ec;
+        std::filesystem::create_directories(Mod::get()->getSaveDir(), ec);
+        std::ofstream out(guardFile(), std::ios::trunc);
+        for (auto const& name : guardBanned) {
+            out << "B:" << name << '\n';
+        }
+        if (!inFlight.empty()) {
+            out << "E:" << inFlight << '\n';
+        }
+        out.flush();
+    }
+
+    void guardLoad() {
+        guardBanned.clear();
+        std::string crashedOn;
+        std::ifstream in(guardFile());
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.rfind("B:", 0) == 0) {
+                guardBanned.insert(line.substr(2));
+            }
+            else if (line.rfind("E:", 0) == 0) {
+                crashedOn = line.substr(2);
             }
         }
-        log::info("[InputBuffer] iOS hooks enabled from Geode main-thread queue");
+        if (!crashedOn.empty()) {
+            guardBanned.insert(crashedOn);
+            log::error("[InputBuffer] guard: last launch ended while '{}' was being enabled; that hook stays off", crashedOn);
+        }
+        guardWrite("");
+    }
+
+    void guardStep() {
+        if (guardSettle > 0) {
+            --guardSettle;
+            queueInMainThread([] { guardStep(); });  // next frame
+            return;
+        }
+        if (!guardCurrent.empty()) {
+            guardWrite("");  // survived SETTLE_FRAMES frames with it on
+            guardCurrent.clear();
+        }
+        if (guardNext >= guardQueue.size()) {
+            log::info("[InputBuffer] guard: done, {} hooks banned", guardBanned.size());
+            return;
+        }
+        auto* hook = guardQueue[guardNext++];
+        std::string name(hook->getDisplayName());
+        if (guardBanned.contains(name)) {
+            log::warn("[InputBuffer] guard: skipping banned hook '{}'", name);
+            queueInMainThread([] { guardStep(); });
+            return;
+        }
+        guardCurrent = name;
+        guardWrite(name);  // on disk before the hook goes live
+        log::info("[InputBuffer] guard: enabling '{}'", name);
+        auto result = hook->enable();
+        if (!result) {
+            log::error("[InputBuffer] guard: enabling '{}' failed: {}", name, result.unwrapErr());
+        }
+        guardSettle = SETTLE_FRAMES;
+        queueInMainThread([] { guardStep(); });
+    }
+
+    void hookGuardStart() {
+        guardLoad();
+        guardQueue.clear();
+        for (auto* hook : Mod::get()->getHooks()) {
+            if (!hook->isEnabled()) {
+                guardQueue.push_back(hook);
+            }
+        }
+        guardNext = 0;
+        guardSettle = 0;
+        guardCurrent.clear();
+        log::info("[InputBuffer] guard: {} hooks to enable one by one ({} banned from earlier launches)", guardQueue.size(),
+            guardBanned.size());
+        guardStep();
+    }
+#endif
+
+    void enableDeferredIOSHooks() {
+#if defined(GEODE_IS_IOS)
+        hookGuardStart();
 #endif
     }
 
