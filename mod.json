@@ -4,11 +4,11 @@
 		"win": "2.2081",
 		"ios": "2.2081"
 	},
-	"version": "v2.77.1",
+	"version": "v2.77.2",
 	"id": "basu.input-buffer",
 	"name": "Click Before Frames",
 	"developer": "BASU",
-	"description": "Trajectory-based input buffer: delays early clicks/releases by up to 8+ frames, with orb, pad and portal-aware prediction. iOS builds include touch controls. github.com/candyzp/-predictive-input-buffer",
+	"description": "Trajectory-based input buffer with orb, pad and portal-aware prediction. iOS builds use the existing in-game Buffer menu; keyboard shortcuts are desktop-only. github.com/candyzp/-predictive-input-buffer",
 	"settings": {
 		"custom-ticks": {
 			"type": "int",
