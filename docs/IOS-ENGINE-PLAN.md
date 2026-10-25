@@ -54,11 +54,11 @@ Before enabling a mode by default: successful iOS CI build; cold-launch tests; l
 
 ## Current milestone
 
-v2.79.6 is a no-hook input-buffer max-delay slider prototype with a separate `Input buffer debugger` toggle. `Max input delay (ticks)` exposes actual integer values 0–64; 0 means OFF/raw input. Wave is derived from the main value, preserving the original mappings 2/2, 4/4, 8/8, 16/8, 24/12, and 32/16 (All/Wave). Neither setting changes native game physics TPS.
+v2.79.7 is a no-hook input-buffer prototype with one universal `Max input delay (ticks)` slider (0–64) and a separate `Input buffer debugger` toggle. The single limit is shared by every gameplay mode; there are no per-mode delay values or formulas. Neither setting changes native game physics TPS.
 
 
 ## Increment 1: buffer-stage control
 
-The active implementation has no gameplay hooks. One draggable Geode integer slider sets the real main input-buffer delay from 0 to 64 ticks (not a stage index); 0 means OFF/raw input. Wave's limit is derived from that value: up to 8 uses the same limit, 9–16 uses 8, and above 16 uses half the All limit (minimum 8 when enabled). A separate `Input buffer debugger` toggle controls diagnostics only.
+The active implementation has no gameplay hooks. One draggable Geode integer slider sets the universal input-buffer maximum from 0 to 64 actual ticks; 0 means OFF/raw input. The same single limit is intended for every gameplay mode without mode-specific values. A separate `Input buffer debugger` toggle controls diagnostics only.
 
-This is a control harness only: it does not delay inputs while the prediction engine and input scheduler are absent. After actual slider values, derived Wave limits, and the separate debugger pass on iOS, increment 2 can connect the stored max-delay value to the isolated input scheduler. Do not change the game's global physics clock or player update `dt` to implement buffer delay.
+This is a control harness only: it does not delay inputs while the prediction engine and input scheduler are absent. After the single universal delay slider and separate debugger are validated on iOS, increment 2 can connect that stored value to the isolated input scheduler for all modes. Do not change the game's global physics clock or player update `dt` to implement buffer delay.

@@ -3,16 +3,16 @@
   "gd": {
     "ios": "2.2081"
   },
-  "version": "v2.79.6",
+  "version": "v2.79.7",
   "id": "basu.input-buffer",
   "name": "Click Before Frames",
   "developer": "BASU",
-  "description": "iOS input-buffer max-delay control prototype with a separate optional debugger. The max delay uses real tick values from 0 to 64; Wave ticks are derived automatically. Input interception remains disabled.",
+  "description": "iOS input-buffer control prototype with one universal max-delay value shared by all gameplay modes, plus a separate optional debugger. No per-mode delay limits. Input interception remains disabled.",
   "settings": {
     "max-delay-ticks": {
       "type": "int",
       "name": "Max input delay (ticks)",
-      "description": "Maximum delay window for the main input buffer. 0 = OFF/raw input; 1–64 selects the actual tick count. Wave is derived from this value: up to 8 ticks uses the same Wave limit, 9–16 keeps Wave at 8, and above 16 uses half the All limit (minimum 8 when the buffer is enabled). This preserves the original 2/2, 4/4, 8/8, 16/8, 24/12, and 32/16 All/Wave presets. 4 ticks = 1 frame at 60 FPS. This is not the game's physics tick rate.",
+      "description": "One universal maximum input-delay value used across the entire input-buffer system; the same value applies to every gameplay mode with no per-mode overrides. 0 = OFF/raw input; 1–64 selects the tick limit. 4 ticks = 1 frame at 60 FPS. This is not the game's physics tick rate.",
       "default": 2,
       "min": 0,
       "max": 64,
@@ -29,7 +29,7 @@
     "debugger-enabled": {
       "type": "bool",
       "name": "Input buffer debugger",
-      "description": "Separately enable/disable diagnostic log messages for the current max input delay and its automatically derived Wave limit. Does not change the selected delay or gameplay.",
+      "description": "Separately enable/disable diagnostic logs for the one universal input-delay value. Does not change the selected delay or any gameplay setting.",
       "default": true
     }
   },

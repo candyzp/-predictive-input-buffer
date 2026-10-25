@@ -12,37 +12,24 @@ namespace {
         return std::clamp(static_cast<int>(value), 0, MAX_INPUT_DELAY_TICKS);
     }
 
-    // Keep the original Click Before Frames All/Wave preset behavior:
-    // 2/2, 4/4, 8/8, 16/8, 24/12, 32/16.
-    // For values above 16, Wave receives half the All limit, never below 8.
-    int waveTicksFor(int allTicks) {
-        if (allTicks <= 8) {
-            return allTicks;
-        }
-        return std::max(8, allTicks / 2);
-    }
-
     void logDelay(int64_t rawValue, bool startup) {
         auto* mod = Mod::get();
         if (!mod->getSettingValue<bool>("debugger-enabled")) {
             return;
         }
 
-        const int allTicks = clampInputDelay(rawValue);
+        const int ticks = clampInputDelay(rawValue);
         const char* origin = startup ? "Startup" : "Max input delay slider";
 
-        if (allTicks == 0) {
-            log::info("[InputBuffer] {}: Max input delay OFF (100% raw input)", origin);
+        if (ticks == 0) {
+            log::info("[InputBuffer] {}: Universal max input delay OFF (raw input)", origin);
             return;
         }
 
-        const int waveTicks = waveTicksFor(allTicks);
-        const float allFrames = static_cast<float>(allTicks) / 4.0f;
-        const float waveFrames = static_cast<float>(waveTicks) / 4.0f;
-
+        const float frames = static_cast<float>(ticks) / 4.0f;
         log::info(
-            "[InputBuffer] {}: Max input delay = {} ticks ({:.2f}f) | auto Wave limit = {} ticks ({:.2f}f) @ 60fps",
-            origin, allTicks, allFrames, waveTicks, waveFrames
+            "[InputBuffer] {}: Universal max input delay = {} ticks ({:.2f}f @ 60fps); one shared value for all modes",
+            origin, ticks, frames
         );
     }
 }
