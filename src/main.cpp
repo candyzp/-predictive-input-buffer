@@ -16,7 +16,9 @@
 //    dead flipGravity hook priority, optional console, in-game console (stage + live log, hidden by default).
 
 #include <Geode/Geode.hpp>
+#ifndef GEODE_IS_IOS
 #include <Geode/modify/CCKeyboardDispatcher.hpp>
+#endif
 #include <Geode/modify/EffectGameObject.hpp>
 #include <Geode/modify/GJBaseGameLayer.hpp>
 #include <Geode/modify/GameObject.hpp>
@@ -3321,7 +3323,11 @@ class BufferMenu : public geode::Popup {
         { "swing-smart", "Smart swing" },
         { "cbf-sync", "CBF sync" },
         { "predict-moving-objects", "Predict moving objects" },
+        #if defined(GEODE_IS_IOS)
+        { nullptr, "Path view" },
+#else
         { nullptr, "Path view (F10)" },
+#endif
         { "training-mode", "Training (hints only)" },
         { "death-heatmap", "Death heatmap" },
         { "save-ding", "Ding on save" },
@@ -3386,14 +3392,21 @@ private:
         }
     }
 
+    void resetFloaterPosition(CCNode* node) {
+        // All floaters start at y=20; keep their original x and reset instantly.
+        node->setPosition({ node->getPositionX(), 20.f });
+    }
+
     void loopFloater(CCNode* node) {
         float rise = node->getTag() / 10.f;
+        // CCPlace::create is not linked by Geode's iOS cocos bindings; use the
+        // equivalent instant reset callback without changing the floater animation.
         node->runAction(CCRepeatForever::create(CCSequence::create(
             CCSpawn::create(CCMoveBy::create(rise, { 0.f, 270.f }),
                 CCSequence::create(CCFadeTo::create(rise * 0.3f, 110), CCDelayTime::create(rise * 0.4f), CCFadeTo::create(rise * 0.3f, 0),
                     nullptr),
                 nullptr),
-            CCPlace::create(node->getPosition()), nullptr)));
+            CCCallFuncN::create(this, callfuncN_selector(BufferMenu::resetFloaterPosition)), nullptr)));
     }
 
     void colorLabels() {
@@ -3448,6 +3461,13 @@ private:
         exportConsole();
     }
 
+    // iOS has no keyboard shortcuts, so expose the existing F9 console toggle here.
+    void onToggleConsole(CCObject*) {
+        buf.panelOpen = !buf.panelOpen;
+        refreshPanel();
+        this->onClose(nullptr);
+    }
+
     // v2.75 presets: stage + the switches that matter most, in one click
     void onPreset(CCObject* sender) {
         auto* mod = Mod::get();
@@ -3471,10 +3491,17 @@ private:
     void onRunCheck(CCObject*) {
         benchPending = true;
         say("run check: runs at the start of your next attempt from the beginning (restart the level)");
+#if defined(GEODE_IS_IOS)
+        FLAlertLayer::create("Run check",
+            "Restart the level from the beginning: your longest recorded run is replayed on the hidden player. "
+            "The result shows in Console and Stats (open Console from the Buffer menu).",
+            "OK")->show();
+#else
         FLAlertLayer::create("Run check",
             "Restart the level from the beginning: your longest recorded run is replayed on the hidden player and the "
             "result shows in the console (F9) and in Stats.",
             "OK")->show();
+#endif
     }
 
     void onStats(CCObject*) {
@@ -3575,6 +3602,18 @@ protected:
         m_status->setScale(0.55f);
         m_status->setColor(m_t.accent);
         m_mainLayer->addChildAtPosition(m_status, Anchor::Bottom, { 0.f, 56.f });
+#if defined(GEODE_IS_IOS)
+        m_buttonMenu->addChildAtPosition(textButton("Settings", menu_selector(BufferMenu::onAllSettings), 0.42f), Anchor::Bottom,
+            { -148.f, 26.f });
+        m_buttonMenu->addChildAtPosition(textButton("Stats", menu_selector(BufferMenu::onStats), 0.42f), Anchor::Bottom,
+            { -74.f, 26.f });
+        m_buttonMenu->addChildAtPosition(textButton(buf.panelOpen ? "Hide log" : "Console", menu_selector(BufferMenu::onToggleConsole), 0.42f),
+            Anchor::Bottom, { 0.f, 26.f });
+        m_buttonMenu->addChildAtPosition(textButton("Copy log", menu_selector(BufferMenu::onCopyLog), 0.42f), Anchor::Bottom,
+            { 74.f, 26.f });
+        m_buttonMenu->addChildAtPosition(textButton("Forget", menu_selector(BufferMenu::onForget), 0.42f), Anchor::Bottom,
+            { 148.f, 26.f });
+#else
         m_buttonMenu->addChildAtPosition(textButton("Settings", menu_selector(BufferMenu::onAllSettings), 0.55f), Anchor::Bottom,
             { -132.f, 26.f });
         m_buttonMenu->addChildAtPosition(textButton("Stats", menu_selector(BufferMenu::onStats), 0.55f), Anchor::Bottom, { -45.f, 26.f });
@@ -3582,6 +3621,7 @@ protected:
             { 37.f, 26.f });
         m_buttonMenu->addChildAtPosition(textButton("Forget", menu_selector(BufferMenu::onForget), 0.55f), Anchor::Bottom,
             { 124.f, 26.f });
+#endif
 
         // presets + run check
         char const* presets[] = { "Safe", "Balanced", "Aggressive" };
@@ -3711,7 +3751,7 @@ $on_mod(Loaded) {
     if (Loader::get()->isModLoaded("square3ang.cbfextrapolate")) {
         say("CBF Extrapolate detected: visual only, predictions unaffected");
     }
-    say("v2.77.1 loaded. Use Buffer in the pause menu for touch controls.");
+    say("v2.77.2 loaded. Use Buffer in the pause menu for controls and the log.");
 }
 
 class $modify(BufPlayLayer, PlayLayer) {
@@ -4205,6 +4245,7 @@ class $modify(BufPlayerObject, PlayerObject) {
     }
 };
 
+#ifndef GEODE_IS_IOS
 // F6 via the game's own keyboard events: no polling, and it only fires while GD has
 // focus (v1 polled GetAsyncKeyState every physics tick, even when tabbed out).
 class $modify(BufKeyboard, CCKeyboardDispatcher) {
@@ -4248,6 +4289,7 @@ class $modify(BufKeyboard, CCKeyboardDispatcher) {
         return CCKeyboardDispatcher::dispatchKeyboardMSG(key, isKeyDown, isKeyRepeat, timestamp);
     }
 };
+#endif // !GEODE_IS_IOS
 
 class $modify(BufBaseGameLayer, GJBaseGameLayer) {
     static void onModify(auto& self) {

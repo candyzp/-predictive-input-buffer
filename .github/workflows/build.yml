@@ -3,7 +3,7 @@ name: Build Mod
 on:
   workflow_dispatch:
   push:
-    branches: [main, ios-support]
+    branches: [main]
 
 jobs:
   build:
@@ -14,9 +14,13 @@ jobs:
           - name: Windows
             os: windows-latest
             target: Win64
+            configureArgs: ""
           - name: iOS
             os: macos-latest
             target: iOS
+            # Current generated iOS bindings use FMOD typedefs without including fmod.h.
+            # Use an absolute header path so CMake's initial compiler check can find it too.
+            configureArgs: "-DCMAKE_CXX_FLAGS=-include\\ $GEODE_SDK/loader/include/Geode/fmod/fmod.h"
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     steps:
@@ -26,6 +30,7 @@ jobs:
         with:
           sdk: stable
           target: ${{ matrix.target }}
+          configure-args: ${{ matrix.configureArgs }}
           combine: true
 
   package:
