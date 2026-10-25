@@ -610,8 +610,12 @@ namespace {
         bool copied = geode::utils::clipboard::write(text);
         std::error_code ec;
         std::filesystem::create_directories(mod->getSaveDir(), ec);
-        std::ofstream(mod->getSaveDir() / "console-export.txt", std::ios::trunc) << text;
-        say("console {} ({} lines) + saved to console-export.txt", copied ? "copied to clipboard" : "NOT copied", exportLines.size());
+        std::ofstream file(mod->getSaveDir() / "console-export.txt", std::ios::trunc);
+        file << text;
+        file.close();
+        bool saved = static_cast<bool>(file);
+        say("console {} ({} lines); file export {}", copied ? "copied to clipboard" : "NOT copied",
+            exportLines.size(), saved ? "saved to console-export.txt" : "FAILED to save console-export.txt");
     }
 
     std::string stageText() {
@@ -3187,7 +3191,7 @@ namespace {
         applyStage();
         readSettings();
         saveProfile();
-        say("F6 -> {}", stageText());
+        say("stage -> {}", stageText());
         refreshAutoTag();
         refreshWatermark();
         refreshPanel();
