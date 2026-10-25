@@ -4741,7 +4741,6 @@ class $modify(BufPlayerObject, PlayerObject) {
     }
 };
 
-#endif // !GEODE_IS_IOS
 
 class $modify(BufBaseGameLayer, GJBaseGameLayer) {
     static void onModify(auto& self) {
