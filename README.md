@@ -1,8 +1,8 @@
 # Click Before Frames — iOS predictive rebuild
 
-## Current state: predictive tick engine + one universal max-delay slider
+## Current state: temporary iOS startup-isolation build
 
-Version **v2.79.9** restores the predictive engine from the archived iOS-capable implementation, based on the Windows reference. The active source retains the iOS hook guard: gameplay hooks stay disabled during menu startup, the bootstrap hook starts only after the menu loads, and remaining hooks are enabled one at a time with crash quarantine.
+Version **v2.79.10** is a diagnostic build for an iOS crash before the Geometry Dash menu. The native report shows deep recursion in Geode/Tulip's hook dispatcher; the responsible hook has not yet been identified. This build deliberately leaves every gameplay hook disabled, including the `PlayLayer::init` bootstrap, while preserving startup checkpoints. **Input buffering is intentionally inactive in this diagnostic build.** If it reaches the menu, the next step is to isolate hook activation/interactions. If it still crashes, use `crash-diagnostics/last-state.txt` if present to identify the last logged startup phase.
 
 ## How the tick value actually works
 
