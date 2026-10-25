@@ -4010,23 +4010,31 @@ $on_mod(Loaded) {
     }
     say("v2.77.8 loaded. Use Buffer in the pause menu for controls and the log.");
 #if defined(GEODE_IS_IOS)
-    log::info("[InputBuffer] startup: initialization complete; waiting for Geode Loaded event");
-    GameEvent(GameEventType::Loaded).listen([] {
-        // The Loaded event is posted after MenuLayer::init returns. Queue one more
-        // main-thread pass so hook activation cannot happen inside that event's call chain.
-        queueInMainThread([] {
-            enableDeferredIOSHooks();
-        });
-        return true;
-    }).leak();
+    log::info("[InputBuffer] startup: initialization complete; gameplay hooks remain disabled until a level is entered");
 #endif
 }
 
 class $modify(BufPlayLayer, PlayLayer) {
     static void onModify(auto& self) {
+#if defined(GEODE_IS_IOS)
+        deferIOSHooksUntilQueue(self, true);
+#else
         deferIOSHooksUntilQueue(self);
+#endif
         (void)self.setHookPriorityPre("PlayLayer::destroyPlayer", HOOK_PRIORITY);
         (void)self.setHookPriorityPre("PlayLayer::playEndAnimationToPos", HOOK_PRIORITY);
+    }
+
+    void onEnterTransitionDidFinish() {
+        PlayLayer::onEnterTransitionDidFinish();
+#if defined(GEODE_IS_IOS)
+        if (guardSafeMode || guardGameplayActive) {
+            return;
+        }
+        guardGameplayActive = true;
+        log::info("[InputBuffer] gameplay entry reached; scheduling gameplay-only hook activation");
+        queueInMainThread([] { hookGuardStart(); });
+#endif
     }
 
     void destroyPlayer(PlayerObject* player, GameObject* object) {
@@ -4073,7 +4081,21 @@ class $modify(BufPlayLayer, PlayLayer) {
     }
 
     bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
+#if defined(GEODE_IS_IOS)
+        // Load any previous crash marker only when a level is requested, never at app boot.
+        guardLoad();
+        if (guardSafeMode) {
+            log::error("[InputBuffer] safe mode: bypassing mod gameplay setup so the level can still load");
+            return PlayLayer::init(level, useReplay, dontCreateObjects);
+        }
+        // If level construction or our setup crashes before the entrance transition
+        // finishes, the next entry can skip this mod's setup and run pass-through.
+        guardWrite("PlayLayer::init");
+#endif
         if (!PlayLayer::init(level, useReplay, dontCreateObjects)) {
+#if defined(GEODE_IS_IOS)
+            guardWrite("");
+#endif
             return false;
         }
         dropGhosts();
@@ -4232,6 +4254,12 @@ class $modify(BufPlayLayer, PlayLayer) {
     }
 
     void onQuit() {
+#if defined(GEODE_IS_IOS)
+        if (guardSafeMode) {
+            PlayLayer::onQuit();
+            return;
+        }
+#endif
         benchFinish();
         benchFlush();
         benchRecording = false;
@@ -4245,6 +4273,15 @@ class $modify(BufPlayLayer, PlayLayer) {
         memoryKey.clear();
         dropGhosts();
         PlayLayer::onQuit();
+#if defined(GEODE_IS_IOS)
+        // Stop queued guard steps and remove gameplay hooks after the current callback.
+        guardGameplayActive = false;
+        guardRunning = false;
+        guardSettle = 0;
+        guardCurrent.clear();
+        guardWrite("");
+        queueInMainThread([] { hookGuardStop(); });
+#endif
     }
 
     void resetLevel() {
