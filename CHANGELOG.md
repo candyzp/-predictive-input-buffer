@@ -1,3 +1,8 @@
+## v2.79.10
+- Add an iOS startup-isolation build for the pre-menu crash report showing deep recursion in Geode's Tulip hook-dispatch handler.
+- Leave every gameplay hook disabled, including the PlayLayer::init bootstrap, while preserving startup checkpoints.
+- Diagnostic only: gameplay input buffering is intentionally inactive. A successful menu launch would point investigation toward hook activation/interactions; a repeat crash would narrow it to earlier startup/hook setup.
+
 ## v2.79.9
 - Fix iOS pre-menu crash: crash-diagnostics initialization no longer runs from the static hook-modifier registration path.
 - Keep diagnostics initialization in the Geode mod `Loaded` callback.
