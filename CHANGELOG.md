@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.77.4 — 2026-10-25
+
+- Replace the extreme raw hook priority with Geode's standard `Priority::First` for shared gameplay hooks, preserving first-in-chain intent with a documented priority.
+- This is a hook-compatibility mitigation for the iOS mod stack; successful compilation alone does not confirm a runtime crash is fixed.
+
 ## v2.77.3 — 2026-10-25
 
 - Limit input-buffer bookkeeping to the active PlayLayer; non-level GJBaseGameLayer scenes now pass input through untouched.

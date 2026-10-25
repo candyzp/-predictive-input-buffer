@@ -53,7 +53,9 @@
 using namespace geode::prelude;
 
 namespace {
-    constexpr int HOOK_PRIORITY = -1000000;
+    // Prefer Geode's documented first priority over an extreme raw value. This mod
+    // shares core gameplay hooks with QOLMod and CBF Extrapolate on iOS.
+    constexpr int HOOK_PRIORITY = static_cast<int>(Priority::First);
     constexpr float TICK = 0.25f;
     constexpr size_t PANEL_LINES = 8;
     constexpr int SPIDER_LAND = 12;  // v2.15: ticks on a surface after a spider input = safe
