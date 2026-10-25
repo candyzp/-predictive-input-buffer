@@ -102,10 +102,10 @@ namespace {
             return;
         }
         for (auto const& name : guardBanned) {
-            out << "B:" << name << '\\n';
+            out << "B:" << name << '\n';
         }
         if (!inFlight.empty()) {
-            out << "E:" << inFlight << '\\n';
+            out << "E:" << inFlight << '\n';
         }
         out.flush();
         if (!out) {
@@ -3958,7 +3958,7 @@ $on_mod(Loaded) {
     if (Loader::get()->isModLoaded("square3ang.cbfextrapolate")) {
         say("CBF Extrapolate detected: visual only, predictions unaffected");
     }
-    say("v2.77.7 loaded. Use Buffer in the pause menu for controls and the log.");
+    say("v2.77.8 loaded. Use Buffer in the pause menu for controls and the log.");
 #if defined(GEODE_IS_IOS)
     log::info("[InputBuffer] startup: initialization complete; waiting for Geode Loaded event");
     GameEvent(GameEventType::Loaded).listen([] {
