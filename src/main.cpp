@@ -60,12 +60,16 @@ namespace {
     constexpr int HOOK_PRIORITY = static_cast<int>(Priority::First);
 
 #if defined(GEODE_IS_IOS)
-    // Only these tiny PlayLayer lifecycle hooks may be installed while the game is in
-    // menus. Their bodies run only when a level is entered / exited. Every gameplay
-    // prediction, object, player, pause UI, and editor hook stays disabled until entry.
+    // These names are never part of the bulk-enable queue. PlayLayer::init itself stays
+    // disabled on iOS; only the small enter/exit sentinels stay installed in the menus.
     bool isGameplayLifecycleHook(std::string_view name) {
         return name == "PlayLayer::init" ||
             name == "PlayLayer::onEnterTransitionDidFinish" ||
+            name == "PlayLayer::onQuit";
+    }
+
+    bool isGameplayActivationSentinel(std::string_view name) {
+        return name == "PlayLayer::onEnterTransitionDidFinish" ||
             name == "PlayLayer::onQuit";
     }
 #endif
@@ -75,7 +79,7 @@ namespace {
 #if defined(GEODE_IS_IOS)
         for (auto* hook : modify.getAllHooks()) {
             std::string name(hook->getDisplayName());
-            bool keep = allowGameplayLifecycleHooks && isGameplayLifecycleHook(name);
+            bool keep = allowGameplayLifecycleHooks && isGameplayActivationSentinel(name);
             hook->setAutoEnable(keep);
 
             // Auto-enable can already have happened by the time onModify is reached on
@@ -153,9 +157,9 @@ namespace {
             guardBanned.insert(crashedOn);
             log::error("[InputBuffer] guard: previous launch ended while '{}' was active; quarantining it", crashedOn);
         }
-        guardSafeMode = guardBanned.contains("PlayLayer::init");
+        guardSafeMode = guardBanned.contains("PlayLayer::init") || guardBanned.contains("gameplay-setup");
         if (guardSafeMode) {
-            log::error("[InputBuffer] guard: PlayLayer::init was quarantined; this level will run in pass-through safe mode");
+            log::error("[InputBuffer] guard: previous gameplay setup was quarantined; this level will run in pass-through safe mode");
         }
         guardWrite("");
     }
@@ -4029,13 +4033,25 @@ class $modify(BufPlayLayer, PlayLayer) {
 #if defined(GEODE_IS_IOS)
     void onEnterTransitionDidFinish() {
         PlayLayer::onEnterTransitionDidFinish();
-        if (guardSafeMode || guardGameplayActive) {
+        if (guardGameplayActive) {
             return;
         }
-        // PlayLayer's custom initialization survived. Clear its marker before testing
-        // other hooks, so a crash between stages won't blame the entry sentinel.
-        guardWrite("");
+
+        // Read the previous crash marker only when a level is on screen, not at app boot.
+        guardLoad();
+        if (guardSafeMode) {
+            guardGameplayActive = true;
+            log::error("[InputBuffer] safe mode: skipping mod setup and gameplay hooks; level remains playable");
+            return;
+        }
+
+        // If this setup itself crashes, the next entry bypasses it and leaves the game in
+        // pass-through mode rather than repeatedly crashing before gameplay can be reached.
         guardGameplayActive = true;
+        guardWrite("gameplay-setup");
+        setupModForLevel(this->m_level);
+        guardWrite("");
+
         log::info("[InputBuffer] gameplay entry reached; scheduling gameplay-only hook activation");
         queueInMainThread([] { hookGuardStart(); });
     }
@@ -4084,24 +4100,7 @@ class $modify(BufPlayLayer, PlayLayer) {
         finishDrift(" (died)");
     }
 
-    bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
-#if defined(GEODE_IS_IOS)
-        // Load any previous crash marker only when a level is requested, never at app boot.
-        guardLoad();
-        if (guardSafeMode) {
-            log::error("[InputBuffer] safe mode: bypassing mod gameplay setup so the level can still load");
-            return PlayLayer::init(level, useReplay, dontCreateObjects);
-        }
-        // If level construction or our setup crashes before the entrance transition
-        // finishes, the next entry can skip this mod's setup and run pass-through.
-        guardWrite("PlayLayer::init");
-#endif
-        if (!PlayLayer::init(level, useReplay, dontCreateObjects)) {
-#if defined(GEODE_IS_IOS)
-            guardWrite("");
-#endif
-            return false;
-        }
+    void setupModForLevel(GJGameLevel* level) {
         dropGhosts();
         readSettings();
         applyStage();
@@ -4254,12 +4253,22 @@ class $modify(BufPlayLayer, PlayLayer) {
         buf.sinceInput = 999;
         buf.rapid = 0;
         forgetPress();
+    }
+
+    bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
+        if (!PlayLayer::init(level, useReplay, dontCreateObjects)) {
+            return false;
+        }
+#if !defined(GEODE_IS_IOS)
+        setupModForLevel(level);
+#endif
         return true;
     }
 
     void onQuit() {
 #if defined(GEODE_IS_IOS)
         if (guardSafeMode) {
+            guardGameplayActive = false;
             PlayLayer::onQuit();
             return;
         }
