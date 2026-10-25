@@ -1,0 +1,46 @@
+name: Build Mod
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            target: Win64
+            configureArgs: ""
+          - name: iOS
+            os: macos-latest
+            target: iOS
+            # Current generated iOS bindings use FMOD typedefs without including fmod.h.
+            # Use an absolute header path so CMake's initial compiler check can find it too.
+            configureArgs: "-DCMAKE_CXX_FLAGS=-include\\ $GEODE_SDK/loader/include/Geode/fmod/fmod.h"
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the mod
+        uses: geode-sdk/build-geode-mod@main
+        with:
+          sdk: stable
+          target: ${{ matrix.target }}
+          configure-args: ${{ matrix.configureArgs }}
+          combine: true
+
+  package:
+    name: Package builds
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - uses: geode-sdk/build-geode-mod/combine@main
+        id: build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Click Before Frames builds
+          path: ${{ steps.build.outputs.build-output }}
