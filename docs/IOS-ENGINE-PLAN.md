@@ -54,7 +54,7 @@ Before enabling a mode by default: successful iOS CI build; cold-launch tests; l
 
 ## Current milestone
 
-v2.79.3 is a no-hook input-buffer stage slider prototype. The `Tick rate` slider selects the exact buffer stage set 2/2, 4/4, 8/8, 16/8, OFF and logs changes. It does not control native game physics TPS.
+v2.79.4 is a no-hook input-buffer stage slider prototype. The `Tick rate` slider selects the exact buffer stage set 2/2, 4/4, 8/8, 16/8, OFF and logs changes. It does not control native game physics TPS.
 
 
 ## Increment 1: buffer-stage control

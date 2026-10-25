@@ -61,7 +61,7 @@ namespace {
 $on_mod(Loaded) {
     logStage(Mod::get()->getSettingValue<int64_t>("tick-rate-stage"), true);
 
-    listenForSettingChanges("tick-rate-stage", [](int64_t value) {
+    listenForSettingChanges<int64_t>("tick-rate-stage", [](int64_t value) {
         logStage(value, false);
     });
 }

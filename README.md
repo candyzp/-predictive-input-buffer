@@ -2,7 +2,7 @@
 
 ## Current state: input-buffer stage slider prototype
 
-Version **v2.79.3** replaces the mistaken TPS overlay with one **Tick rate** slider. The slider selects the input-buffer delay stage and logs the selected stage in Geode's log/console.
+Version **v2.79.4** replaces the mistaken TPS overlay with one **Tick rate** slider. The slider selects the input-buffer delay stage and logs the selected stage in Geode's log/console.
 
 ### Slider stages
 
