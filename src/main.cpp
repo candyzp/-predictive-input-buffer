@@ -16,6 +16,7 @@
 //    dead flipGravity hook priority, optional console, in-game console (stage + live log, hidden by default).
 
 #include <Geode/Geode.hpp>
+#include <Geode/loader/GameEvent.hpp>
 #ifndef GEODE_IS_IOS
 #include <Geode/modify/CCKeyboardDispatcher.hpp>
 #endif
@@ -3813,6 +3814,7 @@ $on_mod(Loaded) {
         queueInMainThread([] {
             enableDeferredIOSHooks();
         });
+        return true;
     }).leak();
 #endif
 }
