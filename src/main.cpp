@@ -33,6 +33,7 @@ class $modify(TickRateDebuggerPlayerObject, PlayerObject) {
         static auto lastTextUpdate = Clock::now();
         static auto lastSettingPoll = Clock::time_point{};
         static bool debuggerEnabled = true;
+        static int targetTPS = 240;
 
         const auto now = Clock::now();
         if (sampledLayer != layer) {
@@ -62,6 +63,7 @@ class $modify(TickRateDebuggerPlayerObject, PlayerObject) {
         if (lastSettingPoll.time_since_epoch().count() == 0 ||
             now - lastSettingPoll >= std::chrono::milliseconds(250)) {
             debuggerEnabled = Mod::get()->getSettingValue<bool>("tick-rate-debugger");
+            targetTPS = static_cast<int>(Mod::get()->getSettingValue<int64_t>("tick-rate-adjuster"));
             lastSettingPoll = now;
         }
 
@@ -90,9 +92,10 @@ class $modify(TickRateDebuggerPlayerObject, PlayerObject) {
         // Refresh text at 10 Hz rather than rebuilding strings every physics tick.
         if (now - lastTextUpdate >= std::chrono::milliseconds(100)) {
             auto message = fmt::format(
-                "TICK {}  |  TPS {:.1f}  |  DT {:.2f} ms",
+                "TICK {}  |  ACTUAL {:.1f} TPS  |  TARGET {} TPS\nDT {:.2f} ms",
                 ticks,
                 measuredTicksPerSecond,
+                targetTPS,
                 latestDeltaSeconds * 1000.0f
             );
             label->setString(message.c_str());

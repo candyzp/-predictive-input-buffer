@@ -1,21 +1,26 @@
 # Click Before Frames — iOS rebuild
 
-## Current state: first isolated hook
+## Current state: diagnostic harness
 
-The active branch remains iOS-only. Version v2.79.1 is the hook-free startup-isolation baseline; the next increment adds exactly one gameplay hook, `PlayerObject::update`, for read-only tick diagnostics. There is still no input interception, ghost player, or prediction engine.
+The active branch remains iOS-only. Version **v2.79.2** adds a read-only tick debugger and a draggable target-TPS setting so we can validate telemetry and setting updates before rebuilding the input-buffer engine.
 
-## Tick rate overlay
+## Tick-rate debugger
 
-The `Tick rate` setting controls a small overlay at the top of the screen. It reports:
-- `TICK`: player-1 update count for the current gameplay layer;
-- `TPS`: measured player-1 update calls per second over a rolling half-second sample;
-- `DT`: the most recent update delta time in milliseconds.
+Enable **Tick-rate debugger** to show the player-1 update count, measured update calls per second (actual TPS), selected target TPS, and latest update delta time (DT). The sample rate is measured from real update calls; it is not inferred from the selected target.
 
-This is diagnostic telemetry only. It does not change the game's tick rate, alter input, or run predictions. The text refreshes at 10 Hz, and the settings value is checked four times per second to keep work out of the hot path.
+## Tick-rate adjuster (probe)
 
-## Hook-isolation test
+The **Tick-rate adjuster (probe)** is a draggable integer setting from 30 to 480 TPS, defaulting to 240. It is read while gameplay is running, and the overlay displays the new target shortly after the value changes. This validates the setting and live read path.
 
-Only one hook is active in this increment. Test cold launch, main menu, entering and exiting a level, pause/resume, and leaving gameplay. If the game crashes at launch again, this single hook is the next variable to remove or replace. Do not add further gameplay hooks or restore prediction code until this increment is verified.
+Important: this probe setting does **not** modify Geometry Dash's native physics clock, player movement, or input. Do not treat the target as an achieved rate. Wiring it into an isolated prediction stepper is a later milestone, after measuring the real update cadence and validating the engine's timing model.
+
+## Test checklist
+
+1. Confirm the mod cold-launches to the main menu.
+2. Enter a level and check that TICK increases, ACTUAL TPS settles to a measured value, and DT is reported in milliseconds.
+3. Change the target-TPS slider while testing and confirm TARGET changes in the overlay without changing native gameplay physics.
+4. Turn the debugger off and confirm the overlay hides; turn it back on and confirm it returns.
+5. Test pause, resume, restart, level exit, and a second level before introducing more hooks.
 
 ## References
 

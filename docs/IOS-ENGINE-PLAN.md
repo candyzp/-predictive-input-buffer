@@ -54,11 +54,11 @@ Before enabling a mode by default: successful iOS CI build; cold-launch tests; l
 
 ## Current milestone
 
-v2.79.1 is the hook-free startup-isolation baseline. No prediction or input interception is active.
+v2.79.2 is a diagnostic harness: one read-only PlayerObject::update hook, a measured TPS/DT overlay, and a target-TPS slider for validating setting reads. Prediction and input interception remain disabled.
 
 
 ## Increment 1: tick-rate probe
 
-The current active implementation adds one `PlayerObject::update` hook and no others. It calls the original update exactly once and measures only player 1. It displays total ticks, measured update calls per second, and latest `dt`, behind the `Tick rate` setting. It must pass cold-launch and level lifecycle tests before any other hook is introduced.
+The current active implementation adds one `PlayerObject::update` hook and no others. It calls the original update exactly once and measures only player 1. The optional debugger reports update count, measured actual TPS, target TPS, and latest `dt`. The draggable target-TPS setting (30–480, default 240) is read live and shown in the overlay, but does not alter native game physics or inputs. Validate slider updates, cold launch, and level lifecycle before introducing further hooks.
 
-Once validated, remove or replace the probe before adding the next hook; each subsequent hook must be its own separately testable increment.
+The next stage may use the target setting only inside an isolated prediction stepper. Do not implement a game-clock / `dt` hack in the PlayerObject hook. Keep actual TPS measurement distinct from the requested target. Each subsequent hook must be its own separately testable increment.

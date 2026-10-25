@@ -3,17 +3,25 @@
   "gd": {
     "ios": "2.2081"
   },
-  "version": "v2.79.1",
+  "version": "v2.79.2",
   "id": "basu.input-buffer",
   "name": "Click Before Frames",
   "developer": "BASU",
-  "description": "Temporary iOS startup-isolation build. Prediction is disabled while the iOS engine is rebuilt. Windows reference: Windows-Achieved.md.",
+  "description": "iOS diagnostic probe: measured tick debugger plus adjustable target-TPS setting. Prediction and input interception remain disabled. Windows reference: Windows-Achieved.md.",
   "settings": {
     "tick-rate-debugger": {
       "type": "bool",
-      "name": "Tick rate",
-      "description": "Show a read-only overlay with player-1 physics tick count, measured update ticks per second (TPS), and the latest update delta time (DT). Does not change game speed.",
+      "name": "Tick-rate debugger",
+      "description": "Show the measured player-1 update rate, update delta time, tick count, and selected target TPS. Read-only; does not change native game physics.",
       "default": true
+    },
+    "tick-rate-adjuster": {
+      "type": "int",
+      "name": "Tick-rate adjuster (probe)",
+      "description": "Draggable target-TPS setting for testing the rate control and live settings updates. The debugger shows the selected target beside measured TPS. This probe does not change the game's native physics rate; the future prediction engine will consume a validated rate.",
+      "default": 240,
+      "min": 30,
+      "max": 480
     }
   },
   "resources": {
