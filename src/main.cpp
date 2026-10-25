@@ -3388,17 +3388,21 @@ private:
         }
     }
 
+    void resetFloaterPosition(CCNode* node) {
+        // All floaters start at y=20; keep their original x and reset instantly.
+        node->setPosition({ node->getPositionX(), 20.f });
+    }
+
     void loopFloater(CCNode* node) {
         float rise = node->getTag() / 10.f;
-        // CCPlace::create is not linked by Geode's iOS cocos bindings.
-        // Keep the same decorative loop, resetting to the original position with CCMoveTo.
-        auto startPosition = node->getPosition();
+        // CCPlace::create is not linked by Geode's iOS cocos bindings; use the
+        // equivalent instant reset callback without changing the floater animation.
         node->runAction(CCRepeatForever::create(CCSequence::create(
             CCSpawn::create(CCMoveBy::create(rise, { 0.f, 270.f }),
                 CCSequence::create(CCFadeTo::create(rise * 0.3f, 110), CCDelayTime::create(rise * 0.4f), CCFadeTo::create(rise * 0.3f, 0),
                     nullptr),
                 nullptr),
-            CCMoveTo::create(0.001f, startPosition), nullptr)));
+            CCCallFuncN::create(this, callfuncN_selector(BufferMenu::resetFloaterPosition)), nullptr)));
     }
 
     void colorLabels() {
