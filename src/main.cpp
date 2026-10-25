@@ -8,13 +8,6 @@
 // iOS safety: gameplay hooks remain deferred until the menu loads and are then enabled
 // one at a time by the crash guard. A failing hook is quarantined on the next launch.
 
-// TEMPORARY iOS hook-registration bisect: keep group A classes only.
-// Group A: EndLevelLayer, PauseLayer, PlayLayer, LevelEditorLayer, HardStreak.
-// Group B: EffectGameObject, GameObject, PlayerObject, GJBaseGameLayer.
-#if defined(GEODE_IS_IOS)
-#define CBF_IOS_HOOK_BISECT_GROUP_A 1
-#endif
-
 #include <Geode/Geode.hpp>
 #include <string_view>
 #include <Geode/loader/GameEvent.hpp>
@@ -200,26 +193,33 @@ namespace {
 #endif
 
 #if defined(GEODE_IS_IOS)
-    // The only hook enabled after the menu finishes loading is PlayLayer::init.
-    // It is a bootstrap: its body runs when a level is entered, never in the menu.
-    bool isGameplayBootstrapHook(std::string_view name) {
-        return name == "PlayLayer::init";
+    // Never install PlayLayer::init as the startup bootstrap: prior iOS builds showed
+    // startup/dispatch crashes with this sentinel active. The level-entry and exit hooks
+    // are the only lifecycle sentinels left auto-enabled.
+    bool isGameplayLifecycleHook(std::string_view name) {
+        return name == "PlayLayer::init" ||
+            name == "PlayLayer::onEnterTransitionDidFinish" ||
+            name == "PlayLayer::onQuit";
+    }
+
+    bool isGameplayActivationSentinel(std::string_view name) {
+        return name == "PlayLayer::onEnterTransitionDidFinish" ||
+            name == "PlayLayer::onQuit";
     }
 #endif
 
     template <class Modify>
-    void deferIOSHooksUntilQueue(Modify& modify) {
+    void deferIOSHooksUntilQueue(Modify& modify, bool allowGameplayLifecycleHooks = false) {
 #if defined(GEODE_IS_IOS)
-        // This runs from hook-modifier registration during dylib static initialization.
-        // Do not call Mod::get(), touch the save directory, or initialize diagnostics here:
-        // Geode has not necessarily finished constructing the Mod yet. Diagnostics are
-        // initialized later from $on_mod(Loaded), before the menu-loaded hook bootstrap.
+        // This runs during hook-modifier registration. Never access the mod save directory
+        // or initialize diagnostics here: Mod may not be fully constructed yet.
         for (auto* hook : modify.getAllHooks()) {
             std::string name(hook->getDisplayName());
-            hook->setAutoEnable(false);
+            bool keep = allowGameplayLifecycleHooks && isGameplayActivationSentinel(name);
+            hook->setAutoEnable(keep);
 
-            // Ensure no hook from this mod remains active while the menu is loading.
-            if (hook->isEnabled()) {
+            // Explicitly disable anything that may have auto-enabled before onModify.
+            if (!keep && hook->isEnabled()) {
                 auto result = hook->disable();
                 if (!result) {
                     log::error("[InputBuffer] startup: could not disable early hook '{}': {}", name, result.unwrapErr());
@@ -247,7 +247,6 @@ namespace {
     bool guardRunning = false;
     bool guardGameplayActive = false;
     bool guardSafeMode = false;
-    bool guardBootstrapPending = false;
     std::string guardCurrent;
 
     // B:<name> is quarantined; E:<name> is the hook whose test was in progress.
@@ -325,60 +324,6 @@ namespace {
             log::error("[InputBuffer] guard: crash history detected; the level will use pass-through safe mode");
         }
         guardWrite("");
-    }
-
-    void clearBootstrapMarkerAfterSettle(int framesLeft) {
-        if (!guardBootstrapPending || guardGameplayActive) {
-            return;
-        }
-        if (framesLeft <= 0) {
-            guardBootstrapPending = false;
-            guardWrite("");
-            log::info("[InputBuffer] guard: PlayLayer::init survived the main-menu startup window");
-            stopCrashDiagnosticsCapture("bootstrap survived the main-menu startup window; diagnostic capture stopped");
-            return;
-        }
-        queueInMainThread([framesLeft] {
-            clearBootstrapMarkerAfterSettle(framesLeft - 1);
-        });
-    }
-
-    void enableGameplayBootstrapHook() {
-        // Load prior crash history after the menu exists, but before installing any hook.
-        crashDiagnosticCheckpoint("entered enableGameplayBootstrapHook; reading prior hook state");
-        guardLoad();
-        if (guardBanned.contains("PlayLayer::init")) {
-            log::error("[InputBuffer] guard: PlayLayer::init crashed during an earlier startup; leaving every mod hook disabled");
-            return;
-        }
-
-        for (auto* hook : Mod::get()->getHooks()) {
-            if (!isGameplayBootstrapHook(hook->getDisplayName())) {
-                continue;
-            }
-
-            if (hook->isEnabled()) {
-                log::warn("[InputBuffer] guard: bootstrap hook was already enabled; leaving it as-is");
-                return;
-            }
-
-            guardWrite("PlayLayer::init");
-            crashDiagnosticCheckpoint("about to enable PlayLayer::init bootstrap hook");
-            auto result = hook->enable();
-            if (!result) {
-                log::error("[InputBuffer] guard: could not enable the single gameplay bootstrap hook: {}", result.unwrapErr());
-                guardWrite("");
-                return;
-            }
-
-            guardBootstrapPending = true;
-            crashDiagnosticCheckpoint("PlayLayer::init enabled; waiting for level entry");
-            log::info("[InputBuffer] guard: enabled only PlayLayer::init; remaining hooks stay disabled until level entry");
-            clearBootstrapMarkerAfterSettle(TAIL_FRAMES);
-            return;
-        }
-
-        log::error("[InputBuffer] guard: could not find the PlayLayer::init bootstrap hook");
     }
 
     void guardStep() {
@@ -464,7 +409,7 @@ namespace {
         guardQueue.clear();
         for (auto* hook : Mod::get()->getHooks()) {
             std::string name(hook->getDisplayName());
-            if (isGameplayBootstrapHook(name)) {
+            if (isGameplayLifecycleHook(name)) {
                 continue; // Keep only the bootstrap hook installed outside active gameplay.
             }
             if (hook->isEnabled()) {
@@ -496,7 +441,7 @@ namespace {
         guardWrite("");
 
         for (auto* hook : Mod::get()->getHooks()) {
-            if (isGameplayBootstrapHook(hook->getDisplayName())) {
+            if (isGameplayLifecycleHook(hook->getDisplayName())) {
                 continue;
             }
             if (hook->isEnabled()) {
@@ -4146,14 +4091,14 @@ $on_mod(Loaded) {
     if (Loader::get()->isModLoaded("square3ang.cbfextrapolate")) {
         say("CBF Extrapolate detected: visual only, predictions unaffected");
     }
-    say("v2.79.11 hook-group A diagnostic build; gameplay hooks intentionally inactive.");
+    say("v2.79.12 loaded. iOS gameplay hooks activate after the level-entry transition.");
 #if defined(GEODE_IS_IOS)
     crashDiagnosticCheckpoint("Loaded callback finished; waiting for Geode's menu-loaded event");
     log::info("[InputBuffer] startup: initialization complete; all hooks remain disabled until Geode finishes loading the menu");
     GameEvent(GameEventType::Loaded).listen([] {
         queueInMainThread([] {
-            crashDiagnosticCheckpoint("menu-loaded event fired; DIAGNOSTIC ISOLATION: all gameplay hooks deliberately remain disabled");
-            log::warn("[InputBuffer] DIAGNOSTIC ISOLATION BUILD: skipped PlayLayer::init bootstrap activation; gameplay buffering is intentionally inactive so launch-stage crash can be isolated");
+            crashDiagnosticCheckpoint("menu loaded; PlayLayer::init is not installed on iOS; waiting for actual level entry");
+            log::info("[InputBuffer] startup: menu loaded; only level-entry/exit sentinels are active, gameplay hooks remain deferred");
         });
         return true;
     }).leak();
@@ -4162,10 +4107,41 @@ $on_mod(Loaded) {
 
 class $modify(BufPlayLayer, PlayLayer) {
     static void onModify(auto& self) {
+#if defined(GEODE_IS_IOS)
+        deferIOSHooksUntilQueue(self, true);
+#else
         deferIOSHooksUntilQueue(self);
+#endif
         (void)self.setHookPriorityPre("PlayLayer::destroyPlayer", HOOK_PRIORITY);
         (void)self.setHookPriorityPre("PlayLayer::playEndAnimationToPos", HOOK_PRIORITY);
     }
+
+#if defined(GEODE_IS_IOS)
+    void onEnterTransitionDidFinish() {
+        PlayLayer::onEnterTransitionDidFinish();
+        if (guardGameplayActive) {
+            return;
+        }
+
+        // Read crash history only after a level is on screen, not during app startup.
+        guardLoad();
+        if (guardSafeMode) {
+            guardGameplayActive = true;
+            log::error("[InputBuffer] safe mode: skipping mod setup and gameplay hooks; level remains playable");
+            return;
+        }
+
+        // Set up the level only after the scene entrance, then queue the hook guard away
+        // from this lifecycle callback's hook-dispatch stack.
+        guardGameplayActive = true;
+        guardWrite("gameplay-setup");
+        setupModForLevel(this->m_level);
+        guardWrite("");
+
+        log::info("[InputBuffer] gameplay entry reached; scheduling gameplay-only hook activation");
+        queueInMainThread([] { hookGuardStart(); });
+    }
+#endif
 
     void destroyPlayer(PlayerObject* player, GameObject* object) {
         if (buf.simulating && isGhost(player)) {
@@ -4361,45 +4337,20 @@ class $modify(BufPlayLayer, PlayLayer) {
         forgetPress();
     }
 
+#if !defined(GEODE_IS_IOS)
     bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
-#if defined(GEODE_IS_IOS)
-        // Mark the base init call as the active candidate. If the hook chain crashes
-        // before the original returns, the next launch will quarantine the bootstrap.
-        guardGameplayActive = true;
-        guardBootstrapPending = false;
-        guardWrite("PlayLayer::init");
-#endif
         if (!PlayLayer::init(level, useReplay, dontCreateObjects)) {
-#if defined(GEODE_IS_IOS)
-            guardGameplayActive = false;
-            guardWrite("");
-#endif
             return false;
         }
-#if defined(GEODE_IS_IOS)
-        if (guardSafeMode) {
-            guardGameplayActive = false;
-            guardWrite("");
-            log::error("[InputBuffer] safe mode: base level loaded; skipping mod setup and all gameplay hooks");
-            return true;
-        }
-
-        guardWrite("gameplay-setup");
         setupModForLevel(level);
-        guardWrite("");
-        log::info("[InputBuffer] level initialized; scheduling gameplay hook activation");
-        queueInMainThread([] { hookGuardStart(); });
-#else
-        setupModForLevel(level);
-#endif
         return true;
     }
+#endif
 
     void onQuit() {
 #if defined(GEODE_IS_IOS)
         if (guardSafeMode) {
             guardGameplayActive = false;
-            guardBootstrapPending = false;
             guardWrite("");
             PlayLayer::onQuit();
             return;
@@ -4485,8 +4436,6 @@ class $modify(BufHardStreak, HardStreak) {
     }
 };
 
-#if !defined(GEODE_IS_IOS) || !defined(CBF_IOS_HOOK_BISECT_GROUP_A)
-// Excluded from iOS diagnostic build v2.79.11; non-iOS builds retain all hooks.
 class $modify(BufEffectGameObject, EffectGameObject) {
     static void onModify(auto& self) {
         deferIOSHooksUntilQueue(self);
@@ -4997,5 +4946,3 @@ class $modify(BufBaseGameLayer, GJBaseGameLayer) {
         GJBaseGameLayer::playerWillSwitchMode(player, object);
     }
 };
-
-#endif // !GEODE_IS_IOS || !CBF_IOS_HOOK_BISECT_GROUP_A
