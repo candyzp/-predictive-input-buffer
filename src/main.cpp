@@ -16,6 +16,7 @@
 //    dead flipGravity hook priority, optional console, in-game console (stage + live log, hidden by default).
 
 #include <Geode/Geode.hpp>
+#include <string_view>
 #include <Geode/loader/GameEvent.hpp>
 #ifndef GEODE_IS_IOS
 #include <Geode/modify/CCKeyboardDispatcher.hpp>
@@ -4008,7 +4009,7 @@ $on_mod(Loaded) {
     if (Loader::get()->isModLoaded("square3ang.cbfextrapolate")) {
         say("CBF Extrapolate detected: visual only, predictions unaffected");
     }
-    say("v2.77.8 loaded. Use Buffer in the pause menu for controls and the log.");
+    say("v2.77.9 loaded. Gameplay hooks activate only after entering a level.");
 #if defined(GEODE_IS_IOS)
     log::info("[InputBuffer] startup: initialization complete; gameplay hooks remain disabled until a level is entered");
 #endif
