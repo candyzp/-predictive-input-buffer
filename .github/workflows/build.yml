@@ -14,9 +14,13 @@ jobs:
           - name: Windows
             os: windows-latest
             target: Win64
+            configureArgs: ""
           - name: iOS
             os: macos-latest
             target: iOS
+            # Current generated iOS bindings use FMOD typedefs without including fmod.h.
+            # Force-include the SDK header for this build only; gameplay logic is unchanged.
+            configureArgs: "-DCMAKE_CXX_FLAGS=-include\\ fmod.h"
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     steps:
@@ -26,6 +30,7 @@ jobs:
         with:
           sdk: stable
           target: ${{ matrix.target }}
+          configure-args: ${{ matrix.configureArgs }}
           combine: true
 
   package:
