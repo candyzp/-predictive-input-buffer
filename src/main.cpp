@@ -23,9 +23,6 @@
 #include <Geode/modify/GJBaseGameLayer.hpp>
 #include <Geode/modify/GameObject.hpp>
 #include <Geode/modify/HardStreak.hpp>
-#if defined(GEODE_IS_IOS)
-#include <Geode/modify/MenuLayer.hpp>
-#endif
 #include <Geode/modify/LevelEditorLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
 #include <Geode/modify/PauseLayer.hpp>
@@ -61,10 +58,10 @@ namespace {
     constexpr int HOOK_PRIORITY = static_cast<int>(Priority::First);
 
     // Keep Click Before Frames' gameplay hooks out of the iOS loader/resource phase.
-    // Geode auto-enables $modify hooks by default; on iOS these are enabled only after
-    // the main menu initializes successfully, using the supported Hook API.
+    // Geode auto-enables $modify hooks by default; defer these hooks until a level has
+    // initialized and returned to the game loop, away from the MenuLayer startup chain.
     template <class Modify>
-    void deferIOSHooksUntilMenu(Modify& modify) {
+    void deferIOSHooksUntilPlayLayer(Modify& modify) {
 #if defined(GEODE_IS_IOS)
         for (auto* hook : modify.getAllHooks()) {
             hook->setAutoEnable(false);
@@ -75,8 +72,8 @@ namespace {
     void enableDeferredIOSHooks() {
 #if defined(GEODE_IS_IOS)
         for (auto* hook : Mod::get()->getHooks()) {
-            // This is the one intentionally auto-enabled startup sentinel.
-            if (hook->getDisplayName() == "MenuLayer::init") {
+            // This is the one intentionally auto-enabled level-init sentinel.
+            if (hook->getDisplayName() == "PlayLayer::init") {
                 continue;
             }
             if (!hook->isEnabled()) {
@@ -86,7 +83,7 @@ namespace {
                 }
             }
         }
-        log::info("[InputBuffer] iOS hooks enabled after MenuLayer::init");
+        log::info("[InputBuffer] iOS hooks enabled after PlayLayer::init returned");
 #endif
     }
 
@@ -3709,7 +3706,7 @@ public:
 // v2.46: the level complete screen says so if the buffer was on during the attempt.
 class $modify(BufEndLevelLayer, EndLevelLayer) {
     static void onModify(auto& self) {
-        deferIOSHooksUntilMenu(self);
+        deferIOSHooksUntilPlayLayer(self);
     }
 
     void customSetup() {
@@ -3742,7 +3739,7 @@ class $modify(BufEndLevelLayer, EndLevelLayer) {
 
 class $modify(BufPauseLayer, PauseLayer) {
     static void onModify(auto& self) {
-        deferIOSHooksUntilMenu(self);
+        deferIOSHooksUntilPlayLayer(self);
     }
 
     void customSetup() {
@@ -3763,15 +3760,25 @@ class $modify(BufPauseLayer, PauseLayer) {
 };
 
 #if defined(GEODE_IS_IOS)
-// The only Click Before Frames hook active during startup. Gameplay hooks are enabled
-// once the main menu initializes, avoiding interference during Geode's resource mount.
-class $modify(BufMenuLayer, MenuLayer) {
-    bool init() {
-        if (!MenuLayer::init()) {
+// Keep MenuLayer::init completely untouched by this mod. The sentinel runs only when a
+// level is opened, then enables the gameplay hooks on the next Cocos frame so Geode's
+// hook dispatcher is no longer executing a hook while the rest of the chain is enabled.
+class $modify(BufStartupPlayLayer, PlayLayer) {
+    bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
+        if (!PlayLayer::init(level, useReplay, dontCreateObjects)) {
             return false;
         }
-        enableDeferredIOSHooks();
+
+        this->runAction(CCSequence::create(
+            CCDelayTime::create(0.f),
+            CCCallFunc::create(this, callfunc_selector(BufStartupPlayLayer::enableDeferredHooksCallback)),
+            nullptr
+        ));
         return true;
+    }
+
+    void enableDeferredHooksCallback() {
+        enableDeferredIOSHooks();
     }
 };
 #endif
@@ -3825,7 +3832,7 @@ $on_mod(Loaded) {
     if (Loader::get()->isModLoaded("square3ang.cbfextrapolate")) {
         say("CBF Extrapolate detected: visual only, predictions unaffected");
     }
-    say("v2.77.3 loaded. Use Buffer in the pause menu for controls and the log.");
+    say("v2.77.6 loaded. Use Buffer in the pause menu for controls and the log.");
 #if defined(GEODE_IS_IOS)
     log::info("[InputBuffer] startup: initialization complete");
 #endif
@@ -3833,7 +3840,7 @@ $on_mod(Loaded) {
 
 class $modify(BufPlayLayer, PlayLayer) {
     static void onModify(auto& self) {
-        deferIOSHooksUntilMenu(self);
+        deferIOSHooksUntilPlayLayer(self);
         (void)self.setHookPriorityPre("PlayLayer::destroyPlayer", HOOK_PRIORITY);
         (void)self.setHookPriorityPre("PlayLayer::playEndAnimationToPos", HOOK_PRIORITY);
     }
@@ -4088,7 +4095,7 @@ class $modify(BufPlayLayer, PlayLayer) {
 
 class $modify(BufEditorLayer, LevelEditorLayer) {
     static void onModify(auto& self) {
-        deferIOSHooksUntilMenu(self);
+        deferIOSHooksUntilPlayLayer(self);
     }
 
     bool init(GJGameLevel* level, bool noUI) {
@@ -4100,7 +4107,7 @@ class $modify(BufEditorLayer, LevelEditorLayer) {
 
 class $modify(BufHardStreak, HardStreak) {
     static void onModify(auto& self) {
-        deferIOSHooksUntilMenu(self);
+        deferIOSHooksUntilPlayLayer(self);
         (void)self.setHookPriorityPre("HardStreak::addPoint", HOOK_PRIORITY);
     }
 
@@ -4114,7 +4121,7 @@ class $modify(BufHardStreak, HardStreak) {
 
 class $modify(BufEffectGameObject, EffectGameObject) {
     static void onModify(auto& self) {
-        deferIOSHooksUntilMenu(self);
+        deferIOSHooksUntilPlayLayer(self);
         (void)self.setHookPriorityPre("EffectGameObject::triggerObject", HOOK_PRIORITY);
     }
 
@@ -4128,7 +4135,7 @@ class $modify(BufEffectGameObject, EffectGameObject) {
 
 class $modify(BufGameObject, GameObject) {
     static void onModify(auto& self) {
-        deferIOSHooksUntilMenu(self);
+        deferIOSHooksUntilPlayLayer(self);
         (void)self.setHookPriorityPre("GameObject::playShineEffect", HOOK_PRIORITY);
     }
 
@@ -4142,7 +4149,7 @@ class $modify(BufGameObject, GameObject) {
 
 class $modify(BufPlayerObject, PlayerObject) {
     static void onModify(auto& self) {
-        deferIOSHooksUntilMenu(self);
+        deferIOSHooksUntilPlayLayer(self);
         (void)self.setHookPriorityPre("PlayerObject::playSpiderDashEffect", HOOK_PRIORITY);
         // v2.18: run before Click Between Frames, so this sees each physics tick once, with
         // its full dt, and CBF's mid-tick clicks arrive while inRealUpdate is set.
@@ -4336,7 +4343,7 @@ class $modify(BufPlayerObject, PlayerObject) {
 // focus (v1 polled GetAsyncKeyState every physics tick, even when tabbed out).
 class $modify(BufKeyboard, CCKeyboardDispatcher) {
     static void onModify(auto& self) {
-        deferIOSHooksUntilMenu(self);
+        deferIOSHooksUntilPlayLayer(self);
     }
 
     bool dispatchKeyboardMSG(enumKeyCodes key, bool isKeyDown, bool isKeyRepeat, double timestamp) {
@@ -4383,7 +4390,7 @@ class $modify(BufKeyboard, CCKeyboardDispatcher) {
 
 class $modify(BufBaseGameLayer, GJBaseGameLayer) {
     static void onModify(auto& self) {
-        deferIOSHooksUntilMenu(self);
+        deferIOSHooksUntilPlayLayer(self);
         (void)self.setHookPriorityPre("GJBaseGameLayer::canBeActivatedByPlayer", HOOK_PRIORITY);
         (void)self.setHookPriorityPre("GJBaseGameLayer::handleButton", HOOK_PRIORITY);
         (void)self.setHookPriorityPre("GJBaseGameLayer::collisionCheckObjects", HOOK_PRIORITY);
