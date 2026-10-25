@@ -86,8 +86,8 @@ namespace {
     }
 
 #if defined(GEODE_IS_IOS)
-    // The game stays in pass-through mode at launch. These helpers only start
-    // from PlayLayer::onEnterTransitionDidFinish, once a level is actually on screen.
+    // After the main menu is ready, only PlayLayer::init is enabled. Other hooks are
+    // turned on from its gameplay path and are disabled again when the level exits.
     constexpr int SETTLE_FRAMES = 2;
     constexpr int TAIL_FRAMES = 180;
 
