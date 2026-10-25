@@ -13,7 +13,7 @@
 		"custom-ticks": {
 			"type": "int",
 			"name": "Custom stage: max delay (ticks)",
-			"description": "Max delay for the CUSTOM F6 stage, all modes except wave. 4 ticks = 1 frame at 60fps.",
+			"description": "Max delay for the CUSTOM stage, all modes except wave. On desktop the stage shortcut defaults to F6. 4 ticks = 1 frame at 60fps.",
 			"default": 40,
 			"min": 1,
 			"max": 64
@@ -21,7 +21,7 @@
 		"custom-wave-ticks": {
 			"type": "int",
 			"name": "Custom stage: max wave delay (ticks)",
-			"description": "Max delay for the CUSTOM F6 stage while in wave.",
+			"description": "Max delay for the CUSTOM stage while in wave. On desktop the stage shortcut defaults to F6.",
 			"default": 20,
 			"min": 0,
 			"max": 64
@@ -103,7 +103,7 @@
 		"drift-check": {
 			"type": "bool",
 			"name": "Drift check (debug)",
-			"description": "After each input, compare where the prediction said you'd go with where you actually went, and log the biggest gap in the in-game console (F9). Use it to see how precise the predictions are on a level.",
+			"description": "After each input, compare the predicted and actual positions and log the biggest gap in the in-game console. On iOS, open Console from the Buffer menu; F9 is the desktop shortcut.",
 			"default": false
 		},
 		"wave-spam-gap": {
@@ -143,7 +143,7 @@
 		"show-path": {
 			"type": "bool",
 			"name": "Path view on at start",
-			"description": "Draw the predicted path in the level after each input (toggle any time with F10). Red = what the input would do right now, green = what the game actually gets, white dot = where a delayed input fires, red dot = crash. Costs two extra predictions per click while on.",
+			"description": "Draw the predicted path in the level after each input. Toggle Path view from the Buffer menu on iOS or use F10 on desktop. Red = what the input would do right now, green = what the game actually gets, white dot = where a delayed input fires, red dot = crash. Costs two extra predictions per click while on.",
 			"default": false
 		},
 		"orb-align-ground": {
@@ -173,7 +173,7 @@
 		"level-memory": {
 			"type": "bool",
 			"name": "Level memory (learns from your runs)",
-			"description": "Remembers, per level and per spot, which delays worked, where saves ended in deaths and where you keep dying. Delays that worked before are tried first; spots where saves keep failing are left alone; orange dots in the path view mark spots where you die a lot. F11 forgets the current level.",
+			"description": "Remembers, per level and per spot, which delays worked, where saves ended in deaths and where you keep dying. Delays that worked before are tried first; spots where saves keep failing are left alone; orange dots in the path view mark spots where you die a lot. Use Forget in the Buffer menu on iOS or F11 on desktop.",
 			"default": true
 		},
 		"auto-release-normal-runs": {
@@ -197,7 +197,7 @@
 		"perf-log": {
 			"type": "bool",
 			"name": "Performance log (debug)",
-			"description": "After each click, log in the console (F9) how long its predictions took, how many runs and ghost ticks it used, and the cost per ghost tick. Changes nothing about the decisions.",
+			"description": "After each click, log how long predictions took, how many runs and ghost ticks they used, and the cost per ghost tick in the in-game console. Open Console from Buffer on iOS; F9 is the desktop shortcut. Changes nothing about the decisions.",
 			"default": false
 		},
 		"ship-buffer": {
@@ -209,7 +209,7 @@
 		"ship-max-delay": {
 			"type": "int",
 			"name": "Ship: max delay (ticks)",
-			"description": "Ship's own max delay, used instead of the F6 stage. Ship has momentum, so small delays are enough and big ones feel laggy. 4 ticks = 1 frame at 60fps.",
+			"description": "Ship's own max delay, used instead of the selected stage. Ship has momentum, so small delays are enough and big ones feel laggy. 4 ticks = 1 frame at 60fps.",
 			"default": 4,
 			"min": 0,
 			"max": 16
@@ -249,13 +249,13 @@
 		"death-log": {
 			"type": "bool",
 			"name": "Death log (debug)",
-			"description": "On every 'no save', log what killed the prediction ghost (object ID, type, where it is relative to you, hitboxes). Ghost deaths in the first 3 ticks are always logged. Use it with F8 when a level predicts badly.",
+			"description": "On every 'no save', log what killed the prediction ghost (object ID, type, where it is relative to you, hitboxes). Ghost deaths in the first 3 ticks are always logged. Use Copy log in the Buffer menu on iOS or F8 on desktop to export the log when a level predicts badly.",
 			"default": false
 		},
 		"explain-inputs": {
 			"type": "bool",
 			"name": "Explain every input (debug)",
-			"description": "Also log the inputs that were passed straight to the game and why: safe as it is, spam guard, late-crash rule, max delay 0. Busy log; turn on to see what the mod does in a part, then use F8.",
+			"description": "Also log the inputs that were passed straight to the game and why: safe as it is, spam guard, late-crash rule, max delay 0. Busy log; turn it on to inspect a part, then use Copy log in the Buffer menu on iOS or F8 on desktop.",
 			"default": false
 		},
 		"cbf-sync": {
@@ -311,7 +311,7 @@
 		"per-level-settings": {
 			"type": "bool",
 			"name": "Per-level settings",
-			"description": "The menu switches are remembered for each level and come back when you open it again. The stage (F6) and low latency are the same for every level.",
+			"description": "The menu switches are remembered for each level and come back when you open it again. The stage selector and low latency are the same for every level.",
 			"default": false
 		},
 		"death-heatmap": {

@@ -7,6 +7,7 @@
 - Replaced the menu's `CCPlace` floater reset with an instant callback, avoiding the unresolved iOS link symbol while preserving the animation and prediction logic.
 - Added an iOS Console button wired to the existing in-game log toggle; prediction and input logic are unchanged.
 - Updated iOS path-view and desktop-key settings labels and the run-check message.
+- Updated settings descriptions so iOS users are directed to the touch-menu controls instead of unavailable function keys.
 - Fixed Copy log status reporting when the text file cannot be written, and made stage-change logs accurate for menu arrows as well as keyboard shortcuts.
 - Kept the Windows build configuration and gameplay logic unchanged.
 
