@@ -32,6 +32,7 @@
 #include <Geode/ui/GeodeUI.hpp>
 #include <Geode/ui/Popup.hpp>
 #include <map>
+#include <mutex>
 #include <Geode/modify/PlayerObject.hpp>
 #if defined(_WIN32)
 #include <Windows.h>
@@ -60,6 +61,139 @@ namespace {
     constexpr int HOOK_PRIORITY = static_cast<int>(Priority::First);
 
 #if defined(GEODE_IS_IOS)
+    // These files live in the mod's save directory so diagnostics remain readable
+    // with a file manager even when Geometry Dash cannot reach the main menu.
+    std::mutex crashDiagMutex;
+    std::ofstream crashDiagStream;
+    std::once_flag crashDiagOnce;
+
+    std::filesystem::path crashDiagnosticsDir() {
+        return Mod::get()->getSaveDir() / "crash-diagnostics";
+    }
+
+    void crashDiagnosticCheckpoint(std::string_view checkpoint) {
+        std::error_code ec;
+        auto dir = crashDiagnosticsDir();
+        std::filesystem::create_directories(dir, ec);
+
+        std::ofstream out(dir / "last-state.txt", std::ios::trunc);
+        if (!out) return;
+
+        out << "Mod: Click Before Frames\n";
+        out << "Version: " << Mod::get()->getVersion().toVString() << '\n';
+        out << "Last checkpoint: " << checkpoint << '\n';
+        out << "This file is overwritten as startup progresses.\n";
+        out.flush();
+    }
+
+    void syncHookGuardSnapshot() {
+        std::error_code ec;
+        auto source = Mod::get()->getSaveDir() / "hook-guard.txt";
+        auto dir = crashDiagnosticsDir();
+        std::filesystem::create_directories(dir, ec);
+        if (ec) return;
+
+        ec.clear();
+        if (std::filesystem::exists(source, ec) && !ec) {
+            std::filesystem::copy_file(
+                source,
+                dir / "hook-guard.txt",
+                std::filesystem::copy_options::overwrite_existing,
+                ec
+            );
+        }
+    }
+
+    void initializeCrashDiagnostics() {
+        std::call_once(crashDiagOnce, [] {
+            std::error_code ec;
+            auto dir = crashDiagnosticsDir();
+            std::filesystem::create_directories(dir, ec);
+
+            // Preserve the previous attempt before opening a fresh, live-flushed log.
+            auto sessionPath = dir / "session.log";
+            auto previousPath = dir / "previous-session.log";
+            ec.clear();
+            if (std::filesystem::exists(sessionPath, ec) && !ec) {
+                ec.clear();
+                std::filesystem::remove(previousPath, ec);
+                ec.clear();
+                std::filesystem::rename(sessionPath, previousPath, ec);
+                if (ec) {
+                    ec.clear();
+                    std::filesystem::copy_file(
+                        sessionPath,
+                        previousPath,
+                        std::filesystem::copy_options::overwrite_existing,
+                        ec
+                    );
+                }
+            }
+
+            {
+                std::lock_guard lock(crashDiagMutex);
+                crashDiagStream.open(sessionPath, std::ios::out | std::ios::trunc);
+                if (crashDiagStream) {
+                    crashDiagStream
+                        << "Click Before Frames startup log\n"
+                        << "Version: " << Mod::get()->getVersion().toVString() << '\n'
+                        << "The file is flushed after every captured message.\n"
+                        << "----------------------------------------\n";
+                    crashDiagStream.flush();
+                }
+            }
+
+            std::ofstream readme(dir / "README.txt", std::ios::trunc);
+            if (readme) {
+                readme << "CLICK BEFORE FRAMES - CRASH DIAGNOSTICS (iOS)\n\n";
+                readme << "Folder path: " << dir.string() << "\n\n";
+                readme << "Please send these files:\n";
+                readme << "- session.log: messages captured during the latest launch\n";
+                readme << "- previous-session.log: the previous captured session, if present\n";
+                readme << "- last-state.txt: the last startup checkpoint reached\n";
+                readme << "- hook-guard.txt: the hook that was being tested, if any\n\n";
+                readme << "This folder is inside this mod's Geode save directory. Files already written can be read without the game reaching the main menu.\n";
+                readme << "These are mod/Geode diagnostics, not the full native iOS crash report. A crash before this mod's code runs cannot be logged by the mod.\n";
+                readme.flush();
+            }
+
+            // Keep the existing hook marker before the guard can read or clear it.
+            syncHookGuardSnapshot();
+            crashDiagnosticCheckpoint("first iOS hook registration; crash diagnostics initialized");
+
+            // Capture this mod's messages plus Geode warnings/errors. Flush each line so
+            // the log survives a later hard crash. The file is capped at about 2 MiB.
+            log::LogEvent().listen([](log::BorrowedLog const& entry) {
+                if (entry.m_severity < Severity::Warning &&
+                    entry.m_source != "Click Before Frames") {
+                    return;
+                }
+
+                std::lock_guard lock(crashDiagMutex);
+                if (!crashDiagStream) return;
+
+                auto written = static_cast<std::streamoff>(crashDiagStream.tellp());
+                if (written >= 2 * 1024 * 1024) return;
+
+                const char* severity = "UNKNOWN";
+                switch (entry.m_severity.m_value) {
+                    case Severity::Trace: severity = "TRACE"; break;
+                    case Severity::Debug: severity = "DEBUG"; break;
+                    case Severity::Info: severity = "INFO"; break;
+                    case Severity::Warning: severity = "WARN"; break;
+                    case Severity::Error: severity = "ERROR"; break;
+                    default: break;
+                }
+
+                crashDiagStream << severity << " [" << entry.m_source << "] "
+                                << entry.m_content << '\n';
+                crashDiagStream.flush();
+            }).leak();
+        });
+    }
+#endif
+
+#if defined(GEODE_IS_IOS)
     // The only hook enabled after the menu finishes loading is PlayLayer::init.
     // It is a bootstrap: its body runs when a level is entered, never in the menu.
     bool isGameplayBootstrapHook(std::string_view name) {
@@ -70,6 +204,7 @@ namespace {
     template <class Modify>
     void deferIOSHooksUntilQueue(Modify& modify) {
 #if defined(GEODE_IS_IOS)
+        initializeCrashDiagnostics();
         for (auto* hook : modify.getAllHooks()) {
             std::string name(hook->getDisplayName());
             hook->setAutoEnable(false);
@@ -130,6 +265,10 @@ namespace {
         if (!out) {
             log::error("[InputBuffer] guard: writing hook-guard.txt failed");
         }
+        syncHookGuardSnapshot();
+        crashDiagnosticCheckpoint(inFlight.empty()
+            ? "hook marker cleared; no hook currently marked in-flight"
+            : std::string("hook marked in-flight: ") + inFlight);
     }
 
     void guardLoad() {
@@ -196,6 +335,7 @@ namespace {
 
     void enableGameplayBootstrapHook() {
         // Load prior crash history after the menu exists, but before installing any hook.
+        crashDiagnosticCheckpoint("entered enableGameplayBootstrapHook; reading prior hook state");
         guardLoad();
         if (guardBanned.contains("PlayLayer::init")) {
             log::error("[InputBuffer] guard: PlayLayer::init crashed during an earlier startup; leaving every mod hook disabled");
@@ -213,6 +353,7 @@ namespace {
             }
 
             guardWrite("PlayLayer::init");
+            crashDiagnosticCheckpoint("about to enable PlayLayer::init bootstrap hook");
             auto result = hook->enable();
             if (!result) {
                 log::error("[InputBuffer] guard: could not enable the single gameplay bootstrap hook: {}", result.unwrapErr());
@@ -221,6 +362,7 @@ namespace {
             }
 
             guardBootstrapPending = true;
+            crashDiagnosticCheckpoint("PlayLayer::init enabled; waiting for level entry");
             log::info("[InputBuffer] guard: enabled only PlayLayer::init; remaining hooks stay disabled until level entry");
             clearBootstrapMarkerAfterSettle(TAIL_FRAMES);
             return;
@@ -4033,6 +4175,8 @@ class $modify(BufPauseLayer, PauseLayer) {
 
 $on_mod(Loaded) {
 #if defined(GEODE_IS_IOS)
+    initializeCrashDiagnostics();
+    crashDiagnosticCheckpoint("mod Loaded callback entered");
     log::info("[InputBuffer] startup: Loaded callback entered");
 #endif
 #if defined(_WIN32)
@@ -4043,11 +4187,13 @@ $on_mod(Loaded) {
 #endif
     buf.showPath = Mod::get()->getSettingValue<bool>("show-path");
 #if defined(GEODE_IS_IOS)
+    crashDiagnosticCheckpoint("settings read; recovering saved settings");
     log::info("[InputBuffer] startup: settings read; recovering saved settings");
 #endif
     recoverGlobals();
     buf.stage = std::clamp(static_cast<int>(Mod::get()->getSavedValue<int64_t>("stage", 0)), 0, STAGE_COUNT - 1);
 #if defined(GEODE_IS_IOS)
+    crashDiagnosticCheckpoint("saved settings recovered; reading mod settings");
     log::info("[InputBuffer] startup: saved settings recovered; reading mod settings");
 #endif
     // v2.62: per-level settings off (switched off once): every level uses the same switches, like v2.43.1
@@ -4064,6 +4210,7 @@ $on_mod(Loaded) {
     readSettings();
     applyStage();
 #if defined(GEODE_IS_IOS)
+    crashDiagnosticCheckpoint("settings applied; checking optional mods");
     log::info("[InputBuffer] startup: settings applied; checking optional mods");
 #endif
 #if defined(_WIN32)
@@ -4080,11 +4227,13 @@ $on_mod(Loaded) {
     if (Loader::get()->isModLoaded("square3ang.cbfextrapolate")) {
         say("CBF Extrapolate detected: visual only, predictions unaffected");
     }
-    say("v2.77.12 loaded. Only the gameplay bootstrap activates after menu load.");
+    say("v2.77.13 loaded. Startup crash diagnostics are saved to the mod folder.");
 #if defined(GEODE_IS_IOS)
+    crashDiagnosticCheckpoint("Loaded callback finished; waiting for Geode's menu-loaded event");
     log::info("[InputBuffer] startup: initialization complete; all hooks remain disabled until Geode finishes loading the menu");
     GameEvent(GameEventType::Loaded).listen([] {
         queueInMainThread([] {
+            crashDiagnosticCheckpoint("menu-loaded event fired; enabling gameplay bootstrap");
             enableGameplayBootstrapHook();
         });
         return true;
