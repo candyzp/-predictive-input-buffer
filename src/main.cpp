@@ -66,6 +66,7 @@ namespace {
     std::mutex crashDiagMutex;
     std::ofstream crashDiagStream;
     std::once_flag crashDiagOnce;
+    ListenerHandle crashDiagListener;
 
     std::filesystem::path crashDiagnosticsDir() {
         return Mod::get()->getSaveDir() / "crash-diagnostics";
@@ -188,8 +189,19 @@ namespace {
                 crashDiagStream << severity << " [" << entry.m_source << "] "
                                 << entry.m_content << '\n';
                 crashDiagStream.flush();
-            }).leak();
+            });
         });
+    }
+
+    void stopCrashDiagnosticsCapture(std::string_view reason) {
+        crashDiagnosticCheckpoint(reason);
+        log::flush();
+        crashDiagListener.destroy();
+        std::lock_guard lock(crashDiagMutex);
+        if (crashDiagStream) {
+            crashDiagStream.flush();
+            crashDiagStream.close();
+        }
     }
 #endif
 
@@ -326,6 +338,7 @@ namespace {
             guardBootstrapPending = false;
             guardWrite("");
             log::info("[InputBuffer] guard: PlayLayer::init survived the main-menu startup window");
+            stopCrashDiagnosticsCapture("bootstrap survived the main-menu startup window; diagnostic capture stopped");
             return;
         }
         queueInMainThread([framesLeft] {
@@ -399,6 +412,7 @@ namespace {
             guardWrite("gameplay-running");
             guardRunning = false;
             log::info("[InputBuffer] guard: gameplay activation complete; {} hooks quarantined", guardBanned.size());
+            stopCrashDiagnosticsCapture("gameplay hook test survived; diagnostic capture stopped");
             return;
         }
 
@@ -497,6 +511,7 @@ namespace {
             }
         }
         log::info("[InputBuffer] guard: gameplay hooks disabled on level exit");
+        stopCrashDiagnosticsCapture("gameplay hooks disabled on level exit");
     }
 #endif
 
@@ -4227,7 +4242,7 @@ $on_mod(Loaded) {
     if (Loader::get()->isModLoaded("square3ang.cbfextrapolate")) {
         say("CBF Extrapolate detected: visual only, predictions unaffected");
     }
-    say("v2.77.13 loaded. Startup crash diagnostics are saved to the mod folder.");
+    say("v2.77.14 loaded. Startup crash diagnostics are saved to the mod folder.");
 #if defined(GEODE_IS_IOS)
     crashDiagnosticCheckpoint("Loaded callback finished; waiting for Geode's menu-loaded event");
     log::info("[InputBuffer] startup: initialization complete; all hooks remain disabled until Geode finishes loading the menu");
