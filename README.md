@@ -1,9 +1,10 @@
 # Click Before Frames (Geode)
 
-## Desktop keyboard shortcuts
-F6 cycle stage | F7 menu | F8 copy the console log | F9 open/close the in-game console | F10 path view | F11 forget this level's memory
+## Active iOS port
 
-On iOS, open **Buffer** from the pause menu. The menu includes Console, Stats, Copy log, Forget, stage arrows, and Path view. Keyboard shortcuts are desktop-only.
+The active `main` branch and GitHub Actions workflow target **iOS only**. In Geometry Dash, open **Buffer** from the pause menu for the in-game controls, Console, Stats, Copy log, Forget, stage arrows and Path view. Desktop keyboard shortcuts and the native Windows console are not part of the active port.
+
+The previous desktop-capable implementation is preserved on this same branch as a reference: [Windows Achieved](Windows-Achieved.md). The archived source and build configuration are not used by the iOS build.
 
 Practice use only; do not use for verified or leaderboard runs.
 
