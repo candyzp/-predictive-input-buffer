@@ -193,33 +193,25 @@ namespace {
 #endif
 
 #if defined(GEODE_IS_IOS)
-    // Never install PlayLayer::init as the startup bootstrap: prior iOS builds showed
-    // startup/dispatch crashes with this sentinel active. The level-entry and exit hooks
-    // are the only lifecycle sentinels left auto-enabled.
-    bool isGameplayLifecycleHook(std::string_view name) {
-        return name == "PlayLayer::init" ||
-            name == "PlayLayer::onEnterTransitionDidFinish" ||
-            name == "PlayLayer::onQuit";
-    }
-
-    bool isGameplayActivationSentinel(std::string_view name) {
-        return name == "PlayLayer::onEnterTransitionDidFinish" ||
-            name == "PlayLayer::onQuit";
+    // The only bootstrap hook is enabled after Geode's main menu has initialized.
+    // Every other CBF hook remains disabled through app/resource/menu startup.
+    bool isGameplayBootstrapHook(std::string_view name) {
+        return name == "PlayLayer::onEnterTransitionDidFinish";
     }
 #endif
 
     template <class Modify>
-    void deferIOSHooksUntilQueue(Modify& modify, bool allowGameplayLifecycleHooks = false) {
+    void deferIOSHooksUntilQueue(Modify& modify) {
 #if defined(GEODE_IS_IOS)
         // This runs during hook-modifier registration. Never access the mod save directory
         // or initialize diagnostics here: Mod may not be fully constructed yet.
+        // Do not leave even lifecycle hooks enabled during app/menu startup.
         for (auto* hook : modify.getAllHooks()) {
             std::string name(hook->getDisplayName());
-            bool keep = allowGameplayLifecycleHooks && isGameplayActivationSentinel(name);
-            hook->setAutoEnable(keep);
+            hook->setAutoEnable(false);
 
             // Explicitly disable anything that may have auto-enabled before onModify.
-            if (!keep && hook->isEnabled()) {
+            if (hook->isEnabled()) {
                 auto result = hook->disable();
                 if (!result) {
                     log::error("[InputBuffer] startup: could not disable early hook '{}': {}", name, result.unwrapErr());
@@ -326,6 +318,32 @@ namespace {
         guardWrite("");
     }
 
+    void enableGameplayBootstrapHook() {
+        crashDiagnosticCheckpoint("enabling only PlayLayer::onEnterTransitionDidFinish after menu initialization");
+        for (auto* hook : Mod::get()->getHooks()) {
+            if (!isGameplayBootstrapHook(hook->getDisplayName())) {
+                continue;
+            }
+
+            if (hook->isEnabled()) {
+                log::warn("[InputBuffer] startup: PlayLayer::onEnterTransitionDidFinish bootstrap already enabled");
+                return;
+            }
+
+            auto result = hook->enable();
+            if (!result) {
+                log::error("[InputBuffer] startup: could not enable the post-menu level-entry hook: {}", result.unwrapErr());
+                return;
+            }
+
+            log::info("[InputBuffer] startup: enabled only PlayLayer::onEnterTransitionDidFinish; all other CBF hooks remain disabled until level entry");
+            crashDiagnosticCheckpoint("post-menu level-entry hook enabled; waiting for PlayLayer transition");
+            return;
+        }
+
+        log::error("[InputBuffer] startup: could not find PlayLayer::onEnterTransitionDidFinish hook");
+    }
+
     void guardStep() {
         if (!guardRunning || !guardGameplayActive) {
             return;
@@ -409,7 +427,7 @@ namespace {
         guardQueue.clear();
         for (auto* hook : Mod::get()->getHooks()) {
             std::string name(hook->getDisplayName());
-            if (isGameplayLifecycleHook(name)) {
+            if (isGameplayBootstrapHook(name)) {
                 continue; // Keep only the bootstrap hook installed outside active gameplay.
             }
             if (hook->isEnabled()) {
@@ -441,7 +459,7 @@ namespace {
         guardWrite("");
 
         for (auto* hook : Mod::get()->getHooks()) {
-            if (isGameplayLifecycleHook(hook->getDisplayName())) {
+            if (isGameplayBootstrapHook(hook->getDisplayName())) {
                 continue;
             }
             if (hook->isEnabled()) {
@@ -4091,14 +4109,14 @@ $on_mod(Loaded) {
     if (Loader::get()->isModLoaded("square3ang.cbfextrapolate")) {
         say("CBF Extrapolate detected: visual only, predictions unaffected");
     }
-    say("v2.79.12 loaded. iOS gameplay hooks activate after the level-entry transition.");
+    say("v2.79.13 loaded. No CBF hooks are active during app/menu startup.");
 #if defined(GEODE_IS_IOS)
     crashDiagnosticCheckpoint("Loaded callback finished; waiting for Geode's menu-loaded event");
     log::info("[InputBuffer] startup: initialization complete; all hooks remain disabled until Geode finishes loading the menu");
     GameEvent(GameEventType::Loaded).listen([] {
         queueInMainThread([] {
-            crashDiagnosticCheckpoint("menu loaded; PlayLayer::init is not installed on iOS; waiting for actual level entry");
-            log::info("[InputBuffer] startup: menu loaded; only level-entry/exit sentinels are active, gameplay hooks remain deferred");
+            crashDiagnosticCheckpoint("menu loaded; enabling only PlayLayer::onEnterTransitionDidFinish bootstrap");
+            enableGameplayBootstrapHook();
         });
         return true;
     }).leak();
@@ -4107,11 +4125,7 @@ $on_mod(Loaded) {
 
 class $modify(BufPlayLayer, PlayLayer) {
     static void onModify(auto& self) {
-#if defined(GEODE_IS_IOS)
-        deferIOSHooksUntilQueue(self, true);
-#else
         deferIOSHooksUntilQueue(self);
-#endif
         (void)self.setHookPriorityPre("PlayLayer::destroyPlayer", HOOK_PRIORITY);
         (void)self.setHookPriorityPre("PlayLayer::playEndAnimationToPos", HOOK_PRIORITY);
     }
