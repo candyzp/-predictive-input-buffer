@@ -203,7 +203,10 @@ namespace {
     template <class Modify>
     void deferIOSHooksUntilQueue(Modify& modify) {
 #if defined(GEODE_IS_IOS)
-        initializeCrashDiagnostics();
+        // This runs from hook-modifier registration during dylib static initialization.
+        // Do not call Mod::get(), touch the save directory, or initialize diagnostics here:
+        // Geode has not necessarily finished constructing the Mod yet. Diagnostics are
+        // initialized later from $on_mod(Loaded), before the menu-loaded hook bootstrap.
         for (auto* hook : modify.getAllHooks()) {
             std::string name(hook->getDisplayName());
             hook->setAutoEnable(false);

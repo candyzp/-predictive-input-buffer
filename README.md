@@ -2,7 +2,7 @@
 
 ## Current state: predictive tick engine + one universal max-delay slider
 
-Version **v2.79.8** restores the predictive engine from the archived iOS-capable implementation, based on the Windows reference. The active source retains the iOS hook guard: gameplay hooks stay disabled during menu startup, the bootstrap hook starts only after the menu loads, and remaining hooks are enabled one at a time with crash quarantine.
+Version **v2.79.9** restores the predictive engine from the archived iOS-capable implementation, based on the Windows reference. The active source retains the iOS hook guard: gameplay hooks stay disabled during menu startup, the bootstrap hook starts only after the menu loads, and remaining hooks are enabled one at a time with crash quarantine.
 
 ## How the tick value actually works
 
@@ -22,7 +22,7 @@ The reference engine keeps ordered input events. While a press is delayed, subse
 
 ## Crash-safety boundary
 
-The iOS port retains the archived crash guard. On startup, hooks are deferred until the menu finishes loading; `PlayLayer::init` is the sole bootstrap hook, and gameplay hooks are enabled incrementally. A candidate hook is marked before activation so a crash can be quarantined next launch. The crash diagnostics live in the mod's save directory under `crash-diagnostics`.
+Version v2.79.9 fixes a pre-menu crash identified in the v2.79.8 device report. `deferIOSHooksUntilQueue` is called during C++ hook-modifier/static initialization and no longer calls `Mod::get()` or opens diagnostic files at that stage. Crash diagnostics are initialized only from `$on_mod(Loaded)`, once Geode has loaded the mod. This specifically addresses the observed crash inside `initializeCrashDiagnostics()` before the main menu. The iOS port retains the archived crash guard. On startup, hooks are deferred until the menu finishes loading; `PlayLayer::init` is the sole bootstrap hook, and gameplay hooks are enabled incrementally. A candidate hook is marked before activation so a crash can be quarantined next launch. The crash diagnostics live in the mod's save directory under `crash-diagnostics`.
 
 This is a substantial engine restoration, so compilation is not the same as confirming all gameplay modes work on-device. The build should first be exercised in practice mode with cube presses/releases, followed by ship, wave, UFO, ball, robot, spider, and swing. If anything crashes or feels wrong, use the debugger and crash-diagnostics files to identify the last active hook.
 

@@ -1,3 +1,8 @@
+## v2.79.9
+- Fix iOS pre-menu crash: crash-diagnostics initialization no longer runs from the static hook-modifier registration path.
+- Keep diagnostics initialization in the Geode mod `Loaded` callback.
+- Predictive engine and unified max-delay behavior unchanged from v2.79.8.
+
 # Changelog
 
 ## v2.77.7 — 2026-10-25

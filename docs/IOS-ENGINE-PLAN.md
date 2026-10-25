@@ -54,7 +54,7 @@ Before enabling a mode by default: successful iOS CI build; cold-launch tests; l
 
 ## Current milestone
 
-v2.79.8 restores the archived iOS-capable predictive engine while preserving its iOS startup hook guard. One `Max input delay (ticks)` slider (0–64, 0 = OFF) bounds prediction timing across all supported modes. The separate `Input buffer debugger` records actual gameplay decisions and queue state. No per-mode delay caps are retained.
+v2.79.9 restores the archived iOS-capable predictive engine and fixes crash diagnostics being initialized too early during dylib static initialization while preserving its iOS startup hook guard. One `Max input delay (ticks)` slider (0–64, 0 = OFF) bounds prediction timing across all supported modes. The separate `Input buffer debugger` records actual gameplay decisions and queue state. No per-mode delay caps are retained.
 
 
 ## Increment 1: universal predictive delay
