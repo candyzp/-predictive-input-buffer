@@ -3,11 +3,11 @@
   "gd": {
     "ios": "2.2081"
   },
-  "version": "v2.79.10",
+  "version": "v2.79.11",
   "id": "basu.input-buffer",
   "name": "Click Before Frames",
   "developer": "BASU",
-  "description": "iOS predictive input buffer based on the Windows reference engine. One universal max input-delay slider caps predictions for every supported gameplay mode. Temporary iOS startup-isolation build: gameplay hooks remain disabled to diagnose a Geode hook-dispatch recursion crash before the menu.",
+  "description": "iOS predictive input buffer based on the Windows reference engine. One universal max input-delay slider caps predictions for every supported gameplay mode. Temporary iOS hook-registration bisect build: compiles only group A hook classes to isolate the Geode hook-dispatch recursion crash before the menu.",
   "settings": {
     "max-delay-ticks": {
       "type": "int",
