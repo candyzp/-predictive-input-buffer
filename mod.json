@@ -3,11 +3,11 @@
   "gd": {
     "ios": "2.2081"
   },
-  "version": "v2.79.13",
+  "version": "v2.79.14",
   "id": "basu.input-buffer",
   "name": "Click Before Frames",
   "developer": "BASU",
-  "description": "iOS predictive input buffer based on the Windows reference engine. One universal max input-delay slider caps predictions for every supported gameplay mode. iOS hooks remain disabled through app startup and menu loading; only the level-entry bootstrap is enabled after Geode reports the menu loaded.",
+  "description": "iOS predictive input buffer based on the Windows reference engine. One universal max input-delay slider caps predictions for every supported gameplay mode. All hooks remain disabled during startup; a PlayLayer::update bootstrap is enabled after the main menu loads and initializes gameplay state only on a live level update.",
   "settings": {
     "max-delay-ticks": {
       "type": "int",
