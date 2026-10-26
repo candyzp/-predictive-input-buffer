@@ -5,8 +5,28 @@
 // queued in physics-tick order so tap/hold durations are preserved. One universal
 // max-delay setting (0–64 ticks) limits the search for every supported gameplay mode.
 //
-// iOS safety: gameplay hooks remain deferred until the menu loads and are then enabled
-// one at a time by the crash guard. A failing hook is quarantined on the next launch.
+// iOS safety (v2.79.15): all hooks are enabled from launch and NEVER toggled at
+// runtime; each hook body gates its own logic on gameplay flags, and the flag-based
+// crash guard turns the next launch into pass-through safe mode after a crash.
+//
+// v2.79.15 PASS-THROUGH BUILD. Root cause of the menu-build crashes (from app.log and
+// the solo-install test): this game runs Geode in JIT-less mode (loader log: "Disabling
+// runtime intervening") behind a launcher that statically patches every GEODE_MODIFY
+// marker before launch, blind to runtime enable state. Deferring hooks with
+// setAutoEnable(false)/disable() therefore (a) cannot prevent the static patch, and
+// (b) mutating hook chains at runtime is unsupported by TulipHook in JIT-less mode.
+// On top of that, v2.79.12 had enabled PlayLayer::onEnterTransitionDidFinish, which on
+// iOS resolves to a shared Cocos lifecycle implementation and fired on menu nodes.
+// The fix: on iOS this build performs ZERO runtime hook mutation. Hooks are enabled by
+// the loader exactly like every other mod that runs fine on this launcher, and each
+// hook body gates its logic on gameplay flags (inputEngineArmed(), per-level entry in
+// BufPlayLayer::update). The crash guard is flag-based too: gameplay-setup /
+// gameplay-running markers in hook-guard.txt put the next launch into pass-through
+// safe mode, B:<name> lines can hand-disable the input engine, and the crash-log
+// listener is finally kept alive (its handle used to be discarded, so session.log
+// never captured anything).
+// NOTE: bump the version in mod.json to 2.79.15 so the hook-guard quarantine history
+// from the failed experiments resets cleanly (guardLoad() resets on version change).
 
 #include <Geode/Geode.hpp>
 #include <string_view>
@@ -53,7 +73,6 @@ namespace {
     std::mutex crashDiagMutex;
     std::ofstream crashDiagStream;
     std::once_flag crashDiagOnce;
-    ListenerHandle crashDiagListener;
 
     std::filesystem::path crashDiagnosticsDir() {
         return Mod::get()->getSaveDir() / "crash-diagnostics";
@@ -151,6 +170,10 @@ namespace {
 
             // Capture this mod's messages plus Geode warnings/errors. Flush each line so
             // the log survives a later hard crash. The file is capped at about 2 MiB.
+            // v2.79.15: the returned handle used to be discarded, which unregistered the
+            // listener immediately - session.log never captured a single line. The handle
+            // is now leaked on purpose; capture is never torn down (see
+            // flushCrashDiagnostics), so there is no destroy() on a stale handle either.
             log::LogEvent().listen([](log::BorrowedLog const& entry) {
                 if (entry.m_severity < Severity::Warning &&
                     entry.m_source != "Click Before Frames") {
@@ -176,74 +199,59 @@ namespace {
                 crashDiagStream << severity << " [" << entry.m_source << "] "
                                 << entry.m_content << '\n';
                 crashDiagStream.flush();
-            });
+            }).leak();
         });
     }
 
-    void stopCrashDiagnosticsCapture(std::string_view reason) {
+    // v2.79.15: renamed and defanged. The old version destroyed the (never-assigned)
+    // listener handle and closed the stream, and was called repeatedly - once per level
+    // entry and exit - which was both undefined behavior and killed the diagnostics
+    // after the first level. Capture now simply keeps running under the 2 MiB cap; this
+    // only checkpoints and flushes, and is safe to call any number of times.
+    void flushCrashDiagnostics(std::string_view reason) {
         crashDiagnosticCheckpoint(reason);
         log::flush();
-        crashDiagListener.destroy();
         std::lock_guard lock(crashDiagMutex);
         if (crashDiagStream) {
             crashDiagStream.flush();
-            crashDiagStream.close();
         }
     }
 #endif
 
 #if defined(GEODE_IS_IOS)
-    // PlayLayer::update has a gameplay-specific implementation on iOS. Do not use
-    // PlayLayer::onEnterTransitionDidFinish as a hook: on iOS it can resolve to an
-    // inherited Cocos lifecycle implementation and recurse through the same hook chain.
-    bool isGameplayBootstrapHook(std::string_view name) {
-        return name == "PlayLayer::update";
-    }
-#endif
-
-    template <class Modify>
-    void deferIOSHooksUntilQueue(Modify& modify) {
-#if defined(GEODE_IS_IOS)
-        // This runs during hook-modifier registration. Never access the mod save directory
-        // or initialize diagnostics here: Mod may not be fully constructed yet.
-        // Do not leave even lifecycle hooks enabled during app/menu startup.
-        for (auto* hook : modify.getAllHooks()) {
-            std::string name(hook->getDisplayName());
-            hook->setAutoEnable(false);
-
-            // Explicitly disable anything that may have auto-enabled before onModify.
-            if (hook->isEnabled()) {
-                auto result = hook->disable();
-                if (!result) {
-                    log::error("[InputBuffer] startup: could not disable early hook '{}': {}", name, result.unwrapErr());
-                }
-            }
-        }
-#endif
-    }
-
-#if defined(GEODE_IS_IOS)
-    // After the main menu is ready, only PlayLayer::init is enabled. Other hooks are
-    // turned on from its gameplay path and are disabled again when the level exits.
-    constexpr int SETTLE_FRAMES = 2;
-    constexpr int TAIL_FRAMES = 180;
+    // v2.79.15 pass-through architecture. Previous builds deferred hooks with
+    // setAutoEnable(false) + disable() and re-enabled them one at a time from the guard.
+    // On this launcher that is doubly unsupported: Geode runs JIT-less here (the loader
+    // log says "Disabling runtime intervening"), the launcher statically patches EVERY
+    // GEODE_MODIFY marker before launch regardless of runtime enable state, and runtime
+    // hook chain mutation in JIT-less mode is not supported by TulipHook. The v2.79.12
+    // app.log and the solo-install test both showed the deferral could not prevent the
+    // menu-build crash. So this build performs ZERO runtime hook mutation: every hook is
+    // enabled by the loader exactly like every other mod that runs fine on this
+    // launcher, and what the hooks DO is gated by the flags below instead.
+    //
+    // NEVER hook these on iOS (they resolve to shared Cocos lifecycle implementations
+    // and fire on menu nodes - that is exactly what crashed v2.79.12 at menu build):
+    //   PlayLayer::onEnterTransitionDidFinish, PlayLayer::onEnter, PlayLayer::onExit.
+    //
+    // The guard keeps its file (hook-guard.txt) and its meaning:
+    //   B:<name>  quarantined (hand-editable kill switch; honored for the input engine)
+    //   E:<name>  what was in flight when the previous run died; gameplay-setup and
+    //             gameplay-running both put the next launch into pass-through safe mode
 
     std::filesystem::path guardFile() {
         return Mod::get()->getSaveDir() / "hook-guard.txt";
     }
 
     std::unordered_set<std::string> guardBanned;
-    std::vector<Hook*> guardQueue;
-    size_t guardNext = 0;
-    int guardSettle = 0;
-    bool guardTailStarted = false;
-    bool guardRunning = false;
-    bool guardGameplayActive = false;
+    bool guardGameplayActive = false;       // a level is live and this mod set it up
+    bool guardInputEngine = false;          // the input hooks may run their logic
+    bool guardBanInputEngine = false;       // a B: line disabled the input engine by name
     bool guardSafeMode = false;
     bool guardEntryPending = false;
-    std::string guardCurrent;
+    PlayLayer* guardSetupLayer = nullptr;   // per-PlayLayer entry marker
 
-    // B:<name> is quarantined; E:<name> is the hook whose test was in progress.
+
     void guardWrite(std::string const& inFlight) {
         std::error_code ec;
         std::filesystem::create_directories(Mod::get()->getSaveDir(), ec);
@@ -313,170 +321,44 @@ namespace {
             }
         }
         guardSafeMode = guardBanned.contains("gameplay-setup") ||
-            guardBanned.contains("gameplay-running") || guardBanned.contains("PlayLayer::init");
+            guardBanned.contains("gameplay-running") ||
+            guardBanned.contains("PlayLayer::init");  // legacy marker from the deferral builds
         if (guardSafeMode) {
             log::error("[InputBuffer] guard: crash history detected; the level will use pass-through safe mode");
         }
+        // v2.79.15: hand-edited B: lines can disable the input engine by hook name.
+        guardBanInputEngine = guardBanned.contains("GJBaseGameLayer::handleButton") ||
+            guardBanned.contains("PlayerObject::update");
+        if (guardBanInputEngine) {
+            log::error("[InputBuffer] guard: input engine disabled by hook-guard.txt; clicks pass through untouched");
+        }
         guardWrite("");
     }
 
-    void enableGameplayBootstrapHook() {
-        crashDiagnosticCheckpoint("enabling only PlayLayer::update after menu initialization");
-        for (auto* hook : Mod::get()->getHooks()) {
-            if (!isGameplayBootstrapHook(hook->getDisplayName())) {
-                continue;
-            }
-
-            if (hook->isEnabled()) {
-                log::warn("[InputBuffer] startup: PlayLayer::update bootstrap already enabled");
-                return;
-            }
-
-            auto result = hook->enable();
-            if (!result) {
-                log::error("[InputBuffer] startup: could not enable the post-menu PlayLayer::update bootstrap: {}", result.unwrapErr());
-                return;
-            }
-
-            log::info("[InputBuffer] startup: enabled only PlayLayer::update; other CBF hooks remain disabled until an active level update");
-            crashDiagnosticCheckpoint("post-menu PlayLayer::update bootstrap enabled; waiting for gameplay");
-            return;
-        }
-
-        log::error("[InputBuffer] startup: could not find PlayLayer::update bootstrap hook");
-    }
-
-    void guardStep() {
-        if (!guardRunning || !guardGameplayActive) {
-            return;
-        }
-        if (guardSettle > 0) {
-            --guardSettle;
-            queueInMainThread([] { guardStep(); });
-            return;
-        }
-
-        // Keep the final candidate marked while gameplay settles. If it crashes in
-        // this window, the next level entry can safely bypass that candidate.
-        if (guardNext >= guardQueue.size()) {
-            if (!guardCurrent.empty() && !guardTailStarted) {
-                guardTailStarted = true;
-                guardSettle = TAIL_FRAMES;
-                log::info("[InputBuffer] guard: gameplay hooks enabled; observing for {} frames", TAIL_FRAMES);
-                queueInMainThread([] { guardStep(); });
-                return;
-            }
-            if (!guardCurrent.empty()) {
-                guardCurrent.clear();
-            }
-            // Keep a session marker while the level is active. If a hook crashes later,
-            // the next attempt will enter pass-through safe mode instead of repeating it.
-            guardWrite("gameplay-running");
-            guardRunning = false;
-            log::info("[InputBuffer] guard: gameplay activation complete; {} hooks quarantined", guardBanned.size());
-            stopCrashDiagnosticsCapture("gameplay hook test survived; diagnostic capture stopped");
-            return;
-        }
-
-        // Replace the marker with the next candidate in the same main-thread pass.
-        if (!guardCurrent.empty()) {
-            guardCurrent.clear();
-            guardWrite("");
-        }
-
-        auto* hook = guardQueue[guardNext++];
-        std::string name(hook->getDisplayName());
-
-        if (guardBanned.contains(name)) {
-            log::warn("[InputBuffer] guard: skipping quarantined hook '{}'", name);
-            queueInMainThread([] { guardStep(); });
-            return;
-        }
-
-        if (hook->isEnabled()) {
-            auto disabled = hook->disable();
-            if (!disabled) {
-                log::error("[InputBuffer] guard: could not isolate '{}' before testing: {}", name, disabled.unwrapErr());
-                guardCurrent = name;
-                guardWrite(name);
-                guardSettle = SETTLE_FRAMES;
-                queueInMainThread([] { guardStep(); });
-                return;
-            }
-        }
-
-        guardCurrent = name;
-        guardWrite(name); // Persist the candidate before enabling it.
-        log::info("[InputBuffer] guard: enabling gameplay hook '{}'", name);
-        auto result = hook->enable();
-        if (!result) {
-            log::error("[InputBuffer] guard: enabling '{}' failed: {}", name, result.unwrapErr());
-            guardCurrent.clear();
-            guardWrite("");
-            queueInMainThread([] { guardStep(); });
-            return;
-        }
-
-        guardSettle = SETTLE_FRAMES;
-        queueInMainThread([] { guardStep(); });
-    }
-
-    void hookGuardStart() {
-        if (guardSafeMode || guardRunning || !guardGameplayActive) {
-            return;
-        }
-
-        guardQueue.clear();
-        for (auto* hook : Mod::get()->getHooks()) {
-            std::string name(hook->getDisplayName());
-            if (isGameplayBootstrapHook(name)) {
-                continue; // Keep only the bootstrap hook installed outside active gameplay.
-            }
-            if (hook->isEnabled()) {
-                auto result = hook->disable();
-                if (!result) {
-                    log::error("[InputBuffer] guard: failed to disable early hook '{}': {}", name, result.unwrapErr());
-                }
-            }
-            guardQueue.push_back(hook);
-        }
-
-        guardNext = 0;
-        guardSettle = 0;
-        guardTailStarted = false;
-        guardCurrent.clear();
-        guardRunning = true;
-        log::info("[InputBuffer] guard: gameplay started; testing {} hooks ({} quarantined)",
-            guardQueue.size(), guardBanned.size());
-        guardStep();
-    }
-
+    // v2.79.15: flag-based stop. No hooks are patched or unpatched here - that is the
+    // whole point - so this is safe to call from anywhere, including from inside a
+    // hooked call such as PlayLayer::onQuit.
     void hookGuardStop() {
         guardGameplayActive = false;
         guardEntryPending = false;
-        guardRunning = false;
-        guardSettle = 0;
-        guardQueue.clear();
-        guardCurrent.clear();
-        guardTailStarted = false;
+        guardSetupLayer = nullptr;
+        guardInputEngine = false;
         guardWrite("");
-
-        for (auto* hook : Mod::get()->getHooks()) {
-            if (isGameplayBootstrapHook(hook->getDisplayName())) {
-                continue;
-            }
-            if (hook->isEnabled()) {
-                auto result = hook->disable();
-                if (!result) {
-                    log::error("[InputBuffer] guard: failed to disable gameplay hook '{}': {}",
-                        hook->getDisplayName(), result.unwrapErr());
-                }
-            }
-        }
-        log::info("[InputBuffer] guard: gameplay hooks disabled on level exit");
-        stopCrashDiagnosticsCapture("gameplay hooks disabled on level exit");
+        log::info("[InputBuffer] guard: gameplay logic deactivated on level exit");
+        flushCrashDiagnostics("gameplay logic deactivated on level exit");
     }
 #endif
+
+    // v2.79.15: the input hooks gate their logic on this instead of on hook enable
+    // state. On iOS it is armed per level by the guard above; on desktop the mod is
+    // armed by PlayLayer::init and stays armed for the level.
+    bool inputEngineArmed() {
+#if defined(GEODE_IS_IOS)
+        return guardInputEngine;
+#else
+        return true;
+#endif
+    }
 
 
     constexpr float TICK = 0.25f;
@@ -3987,7 +3869,9 @@ public:
 // v2.46: the level complete screen says so if the buffer was on during the attempt.
 class $modify(BufEndLevelLayer, EndLevelLayer) {
     static void onModify(auto& self) {
-        deferIOSHooksUntilQueue(self);
+        // v2.79.15: hooks stay enabled from launch on iOS; bodies gate themselves
+        // (see inputEngineArmed and the per-level entry in BufPlayLayer::update).
+        (void)self;
     }
 
     void customSetup() {
@@ -4020,7 +3904,9 @@ class $modify(BufEndLevelLayer, EndLevelLayer) {
 
 class $modify(BufPauseLayer, PauseLayer) {
     static void onModify(auto& self) {
-        deferIOSHooksUntilQueue(self);
+        // v2.79.15: hooks stay enabled from launch on iOS; bodies gate themselves
+        // (see inputEngineArmed and the per-level entry in BufPlayLayer::update).
+        (void)self;
     }
 
     void customSetup() {
@@ -4112,36 +3998,38 @@ $on_mod(Loaded) {
     if (Loader::get()->isModLoaded("square3ang.cbfextrapolate")) {
         say("CBF Extrapolate detected: visual only, predictions unaffected");
     }
-    say("v2.79.14 loaded. CBF gameplay hooks activate only after a live PlayLayer update.");
+    say("v2.79.15 loaded. iOS: pass-through hooks, flag-based guard; desktop: unchanged.");
 #if defined(GEODE_IS_IOS)
-    crashDiagnosticCheckpoint("Loaded callback finished; waiting for Geode's menu-loaded event");
-    log::info("[InputBuffer] startup: initialization complete; all hooks remain disabled until Geode finishes loading the menu");
-    GameEvent(GameEventType::Loaded).listen([] {
-        queueInMainThread([] {
-            crashDiagnosticCheckpoint("menu loaded; enabling only the PlayLayer::update bootstrap");
-            enableGameplayBootstrapHook();
-        });
-        return true;
-    }).leak();
+    // v2.79.15: nothing is deferred and nothing needs arming here. The loader enables
+    // this mod's hooks exactly like every other mod's on this launcher (statically
+    // patched at launch, runtime-enabled from load); what the hooks DO is gated per
+    // level by BufPlayLayer::update and the inputEngineArmed() checks. No
+    // setAutoEnable / enable / disable call remains anywhere on iOS.
+    crashDiagnosticCheckpoint("Loaded callback finished; pass-through build; hooks enabled from launch");
+    log::info("[InputBuffer] startup: initialization complete; hooks stay enabled from launch, logic is armed per level");
 #endif
 }
 
 class $modify(BufPlayLayer, PlayLayer) {
     static void onModify(auto& self) {
-        deferIOSHooksUntilQueue(self);
+        // v2.79.15: hooks stay enabled from launch on iOS; bodies gate themselves
+        // (see inputEngineArmed and the per-level entry in BufPlayLayer::update).
         (void)self.setHookPriorityPre("PlayLayer::destroyPlayer", HOOK_PRIORITY);
         (void)self.setHookPriorityPre("PlayLayer::playEndAnimationToPos", HOOK_PRIORITY);
     }
 
 #if defined(GEODE_IS_IOS)
     void update(float dt) {
-        // Use PlayLayer's gameplay update as the bootstrap. The inherited lifecycle
-        // callback can resolve to Cocos' shared CCNode implementation on iOS, which
-        // risks a recursive hook chain during menu transitions.
+        // v2.79.15: this hook is enabled from launch and never toggled. The body only
+        // arms the mod once per level; setup is queued so it runs outside the update
+        // dispatch chain (creating nodes in the middle of a hooked call is still best
+        // avoided).
         PlayLayer::update(dt);
 
-        if (guardGameplayActive || guardEntryPending ||
-            GameManager::get()->m_playLayer != this) {
+        // Entry is tracked per PlayLayer (guardSetupLayer), so a level exit that missed
+        // PlayLayer::onQuit cannot block the next level with stale state.
+        if (guardEntryPending || GameManager::get()->m_playLayer != this ||
+            guardSetupLayer == this) {
             return;
         }
 
@@ -4149,26 +4037,28 @@ class $modify(BufPlayLayer, PlayLayer) {
         auto* layer = this;
         queueInMainThread([layer] {
             guardEntryPending = false;
-            if (guardGameplayActive || GameManager::get()->m_playLayer != layer) {
+            if (GameManager::get()->m_playLayer != layer || guardSetupLayer == layer) {
                 return;
             }
+            guardSetupLayer = layer;
 
             guardLoad();
             if (guardSafeMode) {
                 guardGameplayActive = true;
-                log::error("[InputBuffer] safe mode: skipping mod setup and gameplay hooks; level remains playable");
+                log::error("[InputBuffer] safe mode: mod logic stays off; level remains playable");
                 return;
             }
 
-            // Run setup outside the PlayLayer::update hook chain, then queue other hooks
-            // for a later main-thread pass so TulipHook is not modified mid-dispatch.
             guardGameplayActive = true;
             guardWrite("gameplay-setup");
             layer->setupModForLevel(layer->m_level);
-            guardWrite("");
 
-            log::info("[InputBuffer] active PlayLayer update detected; scheduling gameplay-hook activation");
-            queueInMainThread([] { hookGuardStart(); });
+            // Arming is a flag flip, not a hook patch: no TulipHook state is touched,
+            // nothing is written into game code, and no hook dispatch is in progress.
+            guardInputEngine = !guardBanInputEngine;
+            guardWrite("gameplay-running");
+            log::info("[InputBuffer] guard: level live; input engine {}",
+                guardInputEngine ? "armed" : "disabled by hook-guard.txt");
         });
     }
 #endif
@@ -4380,8 +4270,7 @@ class $modify(BufPlayLayer, PlayLayer) {
     void onQuit() {
 #if defined(GEODE_IS_IOS)
         if (guardSafeMode) {
-            guardGameplayActive = false;
-            guardWrite("");
+            hookGuardStop();
             PlayLayer::onQuit();
             return;
         }
@@ -4400,13 +4289,9 @@ class $modify(BufPlayLayer, PlayLayer) {
         dropGhosts();
         PlayLayer::onQuit();
 #if defined(GEODE_IS_IOS)
-        // Stop queued guard steps and remove gameplay hooks after the current callback.
-        guardGameplayActive = false;
-        guardRunning = false;
-        guardSettle = 0;
-        guardCurrent.clear();
-        guardWrite("");
-        queueInMainThread([] { hookGuardStop(); });
+        // v2.79.15: the guard is flag-based, so it stops right here. No hooks are being
+        // patched or unpatched mid-dispatch, and no main-thread queueing is needed.
+        hookGuardStop();
 #endif
     }
 
@@ -4442,7 +4327,9 @@ class $modify(BufPlayLayer, PlayLayer) {
 
 class $modify(BufEditorLayer, LevelEditorLayer) {
     static void onModify(auto& self) {
-        deferIOSHooksUntilQueue(self);
+        // v2.79.15: hooks stay enabled from launch on iOS; bodies gate themselves
+        // (see inputEngineArmed and the per-level entry in BufPlayLayer::update).
+        (void)self;
     }
 
     bool init(GJGameLevel* level, bool noUI) {
@@ -4454,7 +4341,8 @@ class $modify(BufEditorLayer, LevelEditorLayer) {
 
 class $modify(BufHardStreak, HardStreak) {
     static void onModify(auto& self) {
-        deferIOSHooksUntilQueue(self);
+        // v2.79.15: hooks stay enabled from launch on iOS; bodies gate themselves
+        // (see inputEngineArmed and the per-level entry in BufPlayLayer::update).
         (void)self.setHookPriorityPre("HardStreak::addPoint", HOOK_PRIORITY);
     }
 
@@ -4468,7 +4356,8 @@ class $modify(BufHardStreak, HardStreak) {
 
 class $modify(BufEffectGameObject, EffectGameObject) {
     static void onModify(auto& self) {
-        deferIOSHooksUntilQueue(self);
+        // v2.79.15: hooks stay enabled from launch on iOS; bodies gate themselves
+        // (see inputEngineArmed and the per-level entry in BufPlayLayer::update).
         (void)self.setHookPriorityPre("EffectGameObject::triggerObject", HOOK_PRIORITY);
     }
 
@@ -4482,7 +4371,8 @@ class $modify(BufEffectGameObject, EffectGameObject) {
 
 class $modify(BufGameObject, GameObject) {
     static void onModify(auto& self) {
-        deferIOSHooksUntilQueue(self);
+        // v2.79.15: hooks stay enabled from launch on iOS; bodies gate themselves
+        // (see inputEngineArmed and the per-level entry in BufPlayLayer::update).
         (void)self.setHookPriorityPre("GameObject::playShineEffect", HOOK_PRIORITY);
     }
 
@@ -4496,7 +4386,8 @@ class $modify(BufGameObject, GameObject) {
 
 class $modify(BufPlayerObject, PlayerObject) {
     static void onModify(auto& self) {
-        deferIOSHooksUntilQueue(self);
+        // v2.79.15: hooks stay enabled from launch on iOS; bodies gate themselves
+        // (see inputEngineArmed and the per-level entry in BufPlayLayer::update).
         (void)self.setHookPriorityPre("PlayerObject::playSpiderDashEffect", HOOK_PRIORITY);
         // v2.18: run before Click Between Frames, so this sees each physics tick once, with
         // its full dt, and CBF's mid-tick clicks arrive while inRealUpdate is set.
@@ -4513,7 +4404,7 @@ class $modify(BufPlayerObject, PlayerObject) {
             return;
         }
         auto* layer = GameManager::get()->m_playLayer;
-        if (layer && this == layer->m_player1) {
+        if (layer && this == layer->m_player1 && inputEngineArmed()) {
             ++tickCount;
             ++logClock;
             if (buf.enabled) {
@@ -4539,7 +4430,10 @@ class $modify(BufPlayerObject, PlayerObject) {
             }
         }
 
-        bool isP1 = layer && this == layer->m_player1;
+        // v2.79.15: isP1 carries the input-engine gate, so both isP1 blocks below
+        // (tick bookkeeping around PlayerObject::update) stay off until the guard
+        // has armed the mod for this level.
+        bool isP1 = layer && this == layer->m_player1 && inputEngineArmed();
         if (isP1) {
             // v2.37: getPosition() is updated every physics step; PlayerObject::m_position lags
             // behind, which kept CBF sync, the drift check, path view and memory slices off.
@@ -4688,7 +4582,8 @@ class $modify(BufPlayerObject, PlayerObject) {
 
 class $modify(BufBaseGameLayer, GJBaseGameLayer) {
     static void onModify(auto& self) {
-        deferIOSHooksUntilQueue(self);
+        // v2.79.15: hooks stay enabled from launch on iOS; bodies gate themselves
+        // (see inputEngineArmed and the per-level entry in BufPlayLayer::update).
         (void)self.setHookPriorityPre("GJBaseGameLayer::canBeActivatedByPlayer", HOOK_PRIORITY);
         (void)self.setHookPriorityPre("GJBaseGameLayer::handleButton", HOOK_PRIORITY);
         (void)self.setHookPriorityPre("GJBaseGameLayer::collisionCheckObjects", HOOK_PRIORITY);
@@ -4814,14 +4709,14 @@ class $modify(BufBaseGameLayer, GJBaseGameLayer) {
         auto* activeLayer = GameManager::get()->m_playLayer;
         bool isActivePlayLayer = activeLayer && static_cast<GJBaseGameLayer*>(activeLayer) == this;
 
-        if (!buf.simulating && isActivePlayLayer && button == 1 && !buf.injecting) {
+        if (!buf.simulating && isActivePlayLayer && button == 1 && !buf.injecting && inputEngineArmed()) {
             auto* p1 = this->m_player1;
             if (down || (p1 && (p1->m_isDart || p1->m_isRobot))) {
                 finishDrift("");
             }
             recordRealInput(down, p1);
         }
-        if (!buf.simulating && isActivePlayLayer && button == 1 && !buf.injecting) {
+        if (!buf.simulating && isActivePlayLayer && button == 1 && !buf.injecting && inputEngineArmed()) {
             // v2.21 performance log: what this click cost, measured around the whole decision.
             buf.simRuns = 0;
             buf.simTicks = 0;
@@ -4847,7 +4742,7 @@ class $modify(BufBaseGameLayer, GJBaseGameLayer) {
                 return;
             }
         }
-        if (!buf.simulating && isActivePlayLayer && button == 1) {
+        if (!buf.simulating && isActivePlayLayer && button == 1 && inputEngineArmed()) {
             benchInput(down);  // v2.75: what the game really gets (your clicks and delayed ones)
         }
         GJBaseGameLayer::handleButton(down, button, isPlayer1);
