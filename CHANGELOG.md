@@ -1,3 +1,12 @@
+## v2.79.15
+- Add Master Tick Controller and a 0–64 tick override for the existing predictive engine's universal search cap; switching it off restores the normal max-delay value.
+- Add optional activation frequency to predict every Nth eligible new press while preserving each bypassed press/release pair.
+- Add an Extremely Aggressive 64-tick preset.
+- Make detailed successful-save console messages opt-in and default the high-volume input debugger to off.
+- Refresh the save-ding setting live and guard sound preload/play calls; sound still indicates successful predictor saves, not every input.
+- Remove the core practice-only gate, bottom watermark, and end-level branding labels while preserving the prediction engine and crash-guard path.
+- Bump the mod version so the iOS crash guard resets stale quarantine history. Build success is not proof of on-device stability.
+
 ## v2.79.14
 - Replace the iOS `PlayLayer::onEnterTransitionDidFinish` bootstrap with `PlayLayer::update`, a gameplay-specific method, to avoid hooking a lifecycle callback that may resolve to a shared inherited Cocos implementation on iOS.
 - All Click Before Frames hooks remain disabled during app/menu startup. After Geode's menu-loaded event, only the PlayLayer update bootstrap is enabled; per-level setup runs on the first live PlayLayer update and all other hooks are queued for a later main-thread pass.
