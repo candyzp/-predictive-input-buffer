@@ -3,11 +3,11 @@
   "gd": {
     "ios": "2.2081"
   },
-  "version": "v2.79.14",
+  "version": "v2.79.15",
   "id": "basu.input-buffer",
   "name": "Click Before Frames",
   "developer": "BASU",
-  "description": "iOS predictive input buffer based on the Windows reference engine. One universal max input-delay slider caps predictions for every supported gameplay mode. All hooks remain disabled during startup; a PlayLayer::update bootstrap is enabled after the main menu loads and initializes gameplay state only on a live level update.",
+  "description": "iOS predictive input buffer with one universal prediction-delay cap for supported gameplay modes. Hook logic stays inert outside a live, guarded gameplay level; the crash guard can force pass-through safe mode after a crash.",
   "settings": {
     "max-delay-ticks": {
       "type": "int",
@@ -26,11 +26,57 @@
         "input": false
       }
     },
+    "master-tick-enabled": {
+      "type": "bool",
+      "name": "Master tick controller",
+      "description": "When ON, Master Tick Value overrides the regular max-delay value for every supported gameplay mode. When OFF, the normal Max input delay setting is restored.",
+      "default": false
+    },
+    "master-tick-value": {
+      "type": "int",
+      "name": "Master tick value",
+      "description": "Universal prediction-window override used while Master tick controller is ON. 0 = raw input / buffering off; 4 ticks are about one frame at 60 FPS. Large values can feel delayed.",
+      "default": 4,
+      "min": 0,
+      "max": 64,
+      "control": {
+        "input": true,
+        "arrows": true,
+        "slider": true,
+        "slider-step": 1
+      }
+    },
+    "activation-rate-enabled": {
+      "type": "bool",
+      "name": "Enable activation frequency",
+      "description": "Only every Nth eligible new press runs the predictive search. Other whole press/release cycles pass through normally. This can reduce search workload but also reduces the number of inputs that can be rescued.",
+      "default": false
+    },
+    "activation-every": {
+      "type": "int",
+      "name": "Activation Frequency (every Nth press)",
+      "description": "When activation frequency is enabled, run prediction every Nth eligible new press. 1 = every press; 2 = every other press; up to 10. Intermediate presses pass through untouched.",
+      "default": 2,
+      "min": 1,
+      "max": 10,
+      "control": {
+        "input": true,
+        "arrows": true,
+        "slider": true,
+        "slider-step": 1
+      }
+    },
+    "save-log-enabled": {
+      "type": "bool",
+      "name": "Detailed successful-save logs",
+      "description": "Show one detailed console message for each successful prediction save. Off reduces repeated formatting and console work without disabling the prediction, stats, or save sound.",
+      "default": false
+    },
     "debugger-enabled": {
       "type": "bool",
       "name": "Input buffer debugger",
       "description": "Writes gameplay press/release decisions, delayed-input queue state, selected universal max-delay changes, and hook-guard status to the Geode log. It does not change the selected delay.",
-      "default": true
+      "default": false
     },
     "sim-budget-ms": {
       "type": "float",
@@ -53,12 +99,6 @@
       "default": 130,
       "min": 48,
       "max": 240
-    },
-    "practice-only": {
-      "type": "bool",
-      "name": "Practice mode only",
-      "description": "ON: only buffer inputs in practice mode. OFF: buffer in every run.",
-      "default": true
     },
     "wave-horizon": {
       "type": "int",
