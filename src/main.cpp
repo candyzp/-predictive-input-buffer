@@ -455,6 +455,13 @@ namespace {
 
         bool enabled = true;
         int ticksAll = 2;
+        bool masterTickEnabled = false;
+        int masterTickValue = 4;
+        bool activationRateEnabled = false;
+        int activationEvery = 2;
+        int activationCounter = 0;
+        bool activationBypassCurrentPress = false;
+        bool saveLogEnabled = false;
         bool debuggerEnabled = true;
 
         std::deque<QueuedInput> queue;
@@ -466,7 +473,6 @@ namespace {
 
         bool smart = true;
         double budgetMs = 6.0;
-        bool practiceOnly = true;    // v2.1: only buffer in practice mode
         int groundHorizon = 130;     // v2.1: how far ahead cube/ball/spider predictions look
         int releaseShift = 0;        // v2.1: delay of the last delivered press, reused for its release
         int waveHorizon = 65;        // v2.2: how far ahead wave predictions look (mini = 15 less)
@@ -541,8 +547,6 @@ namespace {
         bool robotAutoRelease = false;  // v2.12: robot auto-release (practice mode only)
         bool autoNormalRuns = false; // v2.14: let auto-release work outside practice too
         CCLabelBMFont* autoTag = nullptr;  // v2.14: on-screen "AUTO-RELEASE ON" tag
-        CCLabelBMFont* watermark = nullptr;  // v2.46: always-on "Click Before Frames" label while the buffer is on
-        bool usedThisAttempt = false;      // v2.46: the buffer was on at some point of this attempt
         bool learn = true;           // v2.13: per-level memory learned from your runs
         bool fullState = true;       // v2.11.1: copy the full v2.8 player state into the ghost
         int orbWindow = 16;          // v2.6: how far ahead (ticks) an orb may be for that
@@ -699,7 +703,6 @@ namespace {
         buf.smart = mod->getSettingValue<bool>("smart-prediction");
         buf.budgetMs = mod->getSettingValue<double>("sim-budget-ms");
         buf.autoBudget = mod->getSettingValue<bool>("auto-budget");
-        buf.practiceOnly = mod->getSettingValue<bool>("practice-only");
         buf.groundHorizon = static_cast<int>(mod->getSettingValue<int64_t>("ground-horizon"));
         buf.waveHorizon = static_cast<int>(mod->getSettingValue<int64_t>("wave-horizon"));
         buf.assumeOrbs = mod->getSettingValue<bool>("orb-assume-hit");
@@ -724,6 +727,11 @@ namespace {
         buf.perLevel = mod->getSettingValue<bool>("per-level-settings");
         buf.heatmap = mod->getSettingValue<bool>("death-heatmap");
         buf.saveDing = mod->getSettingValue<bool>("save-ding");
+        buf.masterTickEnabled = mod->getSettingValue<bool>("master-tick-enabled");
+        buf.masterTickValue = std::clamp(static_cast<int>(mod->getSettingValue<int64_t>("master-tick-value")), 0, 64);
+        buf.activationRateEnabled = mod->getSettingValue<bool>("activation-rate-enabled");
+        buf.activationEvery = std::clamp(static_cast<int>(mod->getSettingValue<int64_t>("activation-every")), 1, 10);
+        buf.saveLogEnabled = mod->getSettingValue<bool>("save-log-enabled");
         buf.moreTime = mod->getSettingValue<bool>("more-time-death-spots");
         buf.dashAutoRelease = mod->getSettingValue<bool>("dash-auto-release");
         buf.perfLog = mod->getSettingValue<bool>("perf-log");
@@ -786,25 +794,12 @@ namespace {
 
     void applyDelaySetting() {
         auto* mod = Mod::get();
-        buf.ticksAll = std::clamp(
-            static_cast<int>(mod->getSettingValue<int64_t>("max-delay-ticks")), 0, 64
-        );
+        buf.masterTickEnabled = mod->getSettingValue<bool>("master-tick-enabled");
+        buf.masterTickValue = std::clamp(static_cast<int>(mod->getSettingValue<int64_t>("master-tick-value")), 0, 64);
+        const int normalTicks = std::clamp(static_cast<int>(mod->getSettingValue<int64_t>("max-delay-ticks")), 0, 64);
+        buf.ticksAll = buf.masterTickEnabled ? buf.masterTickValue : normalTicks;
         buf.enabled = buf.ticksAll > 0;
         buf.debuggerEnabled = mod->getSettingValue<bool>("debugger-enabled");
-    }
-
-    // v2.14: a run outside practice where auto-release can press for you is marked on screen.
-    // v2.46 watermark: whenever the buffer is on (any stage but OFF) the level shows it, and
-    // can't be turned off, so runs made with the mod are recognisable.
-    void refreshWatermark() {
-        if (!buf.watermark) {
-            return;
-        }
-        // v2.57: hidden in practice mode (practice runs can't be submitted, and it crowded the
-        // checkpoint buttons); always shown in normal mode while the buffer is on.
-        auto* layer = GameManager::get()->m_playLayer;
-        buf.watermark->setVisible(buf.enabled && !(layer && layer->m_isPracticeMode));
-        buf.watermark->setString(fmt::format("Click Before Frames  |  {}", bufferStatusText()).c_str());
     }
 
     void refreshAutoTag() {
@@ -833,8 +828,8 @@ namespace {
         }
         float dt = buf.tickLength > 0.001f ? buf.tickLength : TICK;
         text += fmt::format("{} | physics ~{:.0f} steps/s\n", bufferStatusText(), 60.f / dt);
-        text += fmt::format("budget {:g} ms | smart {} | full state {} | robust {} | late crash {} | practice only {}\n", buf.budgetMs,
-            buf.smart, buf.fullState, buf.robustSaves, buf.lateCrash, buf.practiceOnly);
+        text += fmt::format("budget {:g} ms | smart {} | full state {} | robust {} | late crash {}\n", buf.budgetMs,
+            buf.smart, buf.fullState, buf.robustSaves, buf.lateCrash);
         text += fmt::format("orbs: align {} (ground {}, {}t) timing {} assume {} both {} | memory {} ({} spots)\n", buf.orbAlign,
             buf.orbAlignGround, buf.orbWindow, buf.orbTiming, buf.assumeOrbs, buf.tryBothOrbs, buf.learn, memorySpots());
         text += fmt::format("prediction: wave logic {} margin {} horizon {} spam gap {} | robot smart {} | spider smart {} | ship uses universal max {}t\n",
@@ -895,7 +890,6 @@ namespace {
         buf.panelLines.clear();
         buf.pathNode = nullptr;
         buf.autoTag = nullptr;
-        buf.watermark = nullptr;
         buf.simulating = false;
         buf.injecting = false;
         buf.rapid = 0;
@@ -2726,7 +2720,9 @@ namespace {
         }
         // v2.56: a ding for every real save (training mode shows its hint instead)
         if (buf.saveDing && !buf.train) {
-            FMODAudioEngine::sharedEngine()->playEffect("counter003.ogg");
+            if (auto* audio = FMODAudioEngine::sharedEngine()) {
+                audio->playEffect("counter003.ogg");
+            }
         }
     }
 
@@ -2947,6 +2943,7 @@ namespace {
         bool dual = !twoPlayer && layer->m_gameState.m_isDualMode && layer->m_player2;
 
         buf.isPlayer1 = isPlayer1;
+        const bool wasRealInput = buf.realInput;
         buf.realInput = down;
         if (buf.autoReleased) {
             // the game already let go for you: your real release has nothing left to do
@@ -2956,11 +2953,27 @@ namespace {
                 return true;
             }
         }
-        if (!buf.enabled) {
+        if (buf.activationBypassCurrentPress) {
+            // Rate-limited press/release pairs both pass through untouched.
+            if (!down) {
+                buf.activationBypassCurrentPress = false;
+                buf.releaseShift = 0;
+            }
             buf.appliedInput = down;
             return false;
         }
-        if (buf.practiceOnly && !layer->m_isPracticeMode) {
+        if (buf.activationRateEnabled && buf.enabled && down && !wasRealInput &&
+            buf.queue.empty() && buf.appliedInput == wasRealInput && !layer->m_isPlatformer) {
+            ++buf.activationCounter;
+            const int every = std::clamp(buf.activationEvery, 1, 10);
+            if ((buf.activationCounter - 1) % every != 0) {
+                buf.activationBypassCurrentPress = true;
+                buf.appliedInput = true;
+                if (buf.explain) say("pass press: activation frequency (buffer every {} eligible press)", every);
+                return false;
+            }
+        }
+        if (!buf.enabled) {
             buf.appliedInput = down;
             return false;
         }
@@ -3420,11 +3433,13 @@ namespace {
             releaseAfter = robotUsedHold;  // the path view / drift check show the hold that works
         }
         noteSave(layer, saved);
-        say("SAVED {}{} +{}t ({:g}f)  {}->{}  [max {}]{}", down ? "press" : "release", tickTag, saved, saved * TICK, base, landed, maxDelay,
-            robustNote ? std::string("  (robust)")
-            : fromMemory ? std::string("  (memory)")
-            : cubeStyleWave && marginUsed ? std::string("  +margin")
-            : robotPress ? fmt::format("  hold {}t", robotUsedHold) : std::string());
+        if (buf.saveLogEnabled) {
+            say("SAVED {}{} +{}t ({:g}f)  {}->{}  [max {}]{}", down ? "press" : "release", tickTag, saved, saved * TICK, base, landed, maxDelay,
+                robustNote ? std::string("  (robust)")
+                : fromMemory ? std::string("  (memory)")
+                : cubeStyleWave && marginUsed ? std::string("  +margin")
+                : robotPress ? fmt::format("  hold {}t", robotUsedHold) : std::string());
+        }
         decided(layer, p1, p2, dual, saved, down, horizon, releaseAfter);
         buf.shift = saved;
         queueInput(saved - early, down);
@@ -3562,6 +3577,9 @@ class BufferMenu : public geode::Popup {
         { "save-ding", "Ding on save" },
         { "performance-mode", "Performance mode" },
         { "explain-inputs", "Explain inputs (debug)" },
+        { "master-tick-enabled", "Master ticks" },
+        { "activation-rate-enabled", "Activation rate" },
+        { "save-log-enabled", "Save logs" },
     };
 
     // v2.50: cute theme. v2.75: colour themes (setting "Menu theme")
@@ -3665,7 +3683,6 @@ private:
             readSettings();
             saveProfile();
             refreshHeatmap();
-            refreshWatermark();
         }
         else {
             buf.showPath = value;
@@ -3696,18 +3713,25 @@ private:
     void onPreset(CCObject* sender) {
         auto* mod = Mod::get();
         int which = sender->getTag();
-        int ticks = which == 0 ? 8 : which == 1 ? 16 : 32;
+        const bool extreme = which == 3;
+        const int ticks = which == 0 ? 8 : which == 1 ? 16 : which == 2 ? 32 : 64;
         mod->setSettingValue<bool>("robust-saves", true);
-        mod->setSettingValue<bool>("wave-safety-margin", which != 2);
+        mod->setSettingValue<bool>("wave-safety-margin", which < 2);
         mod->setSettingValue<bool>("more-time-death-spots", which != 0);
         mod->setSettingValue<bool>("low-latency", false);
-        mod->setSettingValue<int64_t>("max-delay-ticks", ticks);
+        mod->setSettingValue<bool>("master-tick-enabled", extreme);
+        if (extreme) {
+            mod->setSettingValue<int64_t>("master-tick-value", 64);
+        } else {
+            mod->setSettingValue<int64_t>("max-delay-ticks", ticks);
+        }
         resetPending();
-        applyDelaySetting();
         readSettings();
-        refreshWatermark();
+        applyDelaySetting();
+        refreshAutoTag();
         refreshPanel();
-        say("preset: {} -> {}", which == 0 ? "Safe" : which == 1 ? "Balanced" : "Aggressive", bufferStatusText());
+        const char* presetName = which == 0 ? "Safe" : which == 1 ? "Balanced" : which == 2 ? "Aggressive" : "Extremely Aggressive";
+        say("preset: {} -> {}", presetName, bufferStatusText());
         refresh();
     }
 
@@ -3824,14 +3848,15 @@ protected:
             { 148.f, 26.f });
 
         // presets + run check
-        char const* presets[] = { "Safe", "Balanced", "Aggressive" };
-        for (int i = 0; i < 3; ++i) {
-            auto* button = textButton(presets[i], menu_selector(BufferMenu::onPreset), 0.5f);
+        char const* presets[] = { "Safe", "Balanced", "Aggressive", "Extremely Aggressive" };
+        for (int i = 0; i < 4; ++i) {
+            auto* button = textButton(presets[i], menu_selector(BufferMenu::onPreset), i == 3 ? 0.31f : 0.43f);
             button->setTag(i);
-            m_buttonMenu->addChildAtPosition(button, Anchor::Bottom, { -132.f + 82.f * i, 82.f });
+            m_buttonMenu->addChildAtPosition(button, Anchor::Bottom, { -133.f + 82.f * i, 84.f });
         }
-        m_buttonMenu->addChildAtPosition(textButton("Run check", menu_selector(BufferMenu::onRunCheck), 0.5f), Anchor::Bottom,
-            { 124.f, 82.f });
+        m_status->setPositionY(47.f);
+        m_buttonMenu->addChildAtPosition(textButton("Run check", menu_selector(BufferMenu::onRunCheck), 0.42f), Anchor::Bottom,
+            { 144.f, 58.f });
 
         refresh();
         return true;
@@ -3876,27 +3901,8 @@ class $modify(BufEndLevelLayer, EndLevelLayer) {
 
     void customSetup() {
         EndLevelLayer::customSetup();
-        if (!buf.usedThisAttempt) {
-            return;
-        }
-        auto win = CCDirector::get()->getWinSize();
-        auto* label = CCLabelBMFont::create("Click Before Frames was on", "bigFont.fnt");
-        label->setScale(0.35f);
-        label->setColor({ 150, 205, 255 });
-        label->setOpacity(170);
-        label->setAnchorPoint({ 1.f, 1.f });
-        label->setPosition({ win.width - 6.f, win.height - 4.f });
-        this->addChild(label, 100);
-        if (attemptStats.saves > 0) {
-            auto* stats = CCLabelBMFont::create(attemptSummary().c_str(), "bigFont.fnt");
-            stats->setScale(0.28f);
-            stats->setColor({ 255, 190, 225 });
-            stats->setOpacity(170);
-            stats->setAnchorPoint({ 1.f, 1.f });
-            stats->setPosition({ win.width - 6.f, win.height - 16.f });
-            this->addChild(stats, 100);
-        }
-        benchFinish();  // a completed run is the best recording there is
+        // Keep run recording/statistics finalization without adding permanent labels.
+        benchFinish();
         benchFlush();
         endAttempt();
     }
@@ -3925,6 +3931,26 @@ class $modify(BufPauseLayer, PauseLayer) {
         BufferMenu::open();
     }
 };
+
+static void refreshEffectiveDelaySetting() {
+    const int oldTicks = buf.ticksAll;
+    const bool oldEnabled = buf.enabled;
+    readSettings();
+    applyDelaySetting();
+    if (oldTicks != buf.ticksAll || oldEnabled != buf.enabled) {
+        auto* layer = GameManager::get()->m_playLayer;
+        const bool syncInput = layer && !buf.autoReleased && buf.appliedInput != buf.realInput;
+        resetPending();
+        if (syncInput) sendButton(layer, buf.realInput);
+        say("max input delay -> {}", bufferStatusText());
+        if (buf.debuggerEnabled) {
+            log::info("[InputBuffer] effective max delay changed to {} ticks (master override {})",
+                buf.ticksAll, buf.masterTickEnabled ? "ON" : "OFF");
+        }
+    }
+    refreshAutoTag();
+    refreshPanel();
+}
 
 $on_mod(Loaded) {
 #if defined(GEODE_IS_IOS)
@@ -3958,26 +3984,23 @@ $on_mod(Loaded) {
     if (buf.debuggerEnabled) {
         log::info("[InputBuffer] debugger ready: universal max delay = {} ticks (0 = OFF/raw input)", buf.ticksAll);
     }
-    listenForSettingChanges<int64_t>("max-delay-ticks", [](int64_t value) {
-        const int nextTicks = std::clamp(static_cast<int>(value), 0, 64);
-        if (nextTicks == buf.ticksAll && buf.enabled == (nextTicks > 0)) {
-            return;
+    listenForSettingChanges<int64_t>("max-delay-ticks", [](int64_t) { refreshEffectiveDelaySetting(); });
+    listenForSettingChanges<bool>("master-tick-enabled", [](bool) { refreshEffectiveDelaySetting(); });
+    listenForSettingChanges<int64_t>("master-tick-value", [](int64_t) { refreshEffectiveDelaySetting(); });
+    listenForSettingChanges<bool>("activation-rate-enabled", [](bool enabled) {
+        buf.activationRateEnabled = enabled;
+        buf.activationCounter = 0;
+    });
+    listenForSettingChanges<int64_t>("activation-every", [](int64_t value) {
+        buf.activationEvery = std::clamp(static_cast<int>(value), 1, 10);
+        buf.activationCounter = 0;
+    });
+    listenForSettingChanges<bool>("save-log-enabled", [](bool enabled) { buf.saveLogEnabled = enabled; });
+    listenForSettingChanges<bool>("save-ding", [](bool enabled) {
+        buf.saveDing = enabled;
+        if (enabled && GameManager::get()->m_playLayer && inputEngineArmed()) {
+            if (auto* audio = FMODAudioEngine::sharedEngine()) audio->preloadEffect("counter003.ogg");
         }
-        auto* layer = GameManager::get()->m_playLayer;
-        const bool syncInput = layer && !buf.autoReleased && buf.appliedInput != buf.realInput;
-        resetPending();
-        if (syncInput) {
-            sendButton(layer, buf.realInput);
-        }
-        buf.ticksAll = nextTicks;
-        buf.enabled = nextTicks > 0;
-        say("max input delay -> {}", bufferStatusText());
-        if (buf.debuggerEnabled) {
-            log::info("[InputBuffer] max input delay changed: {} ticks; shared by all gameplay modes", nextTicks);
-        }
-        refreshAutoTag();
-        refreshWatermark();
-        refreshPanel();
     });
     listenForSettingChanges<bool>("debugger-enabled", [](bool enabled) {
         buf.debuggerEnabled = enabled;
@@ -4108,6 +4131,8 @@ class $modify(BufPlayLayer, PlayLayer) {
 
     void setupModForLevel(GJGameLevel* level) {
         dropGhosts();
+        buf.activationCounter = 0;
+        buf.activationBypassCurrentPress = false;
         readSettings();
         applyDelaySetting();
         exportLines.clear();
@@ -4125,7 +4150,9 @@ class $modify(BufPlayLayer, PlayLayer) {
         benchBestTicks = benchSavedTicks();
         loadProfile();
         if (buf.saveDing) {
-            FMODAudioEngine::sharedEngine()->preloadEffect("counter003.ogg");  // v2.58: no hitch on the first ding
+            if (auto* audio = FMODAudioEngine::sharedEngine()) {
+                audio->preloadEffect("counter003.ogg");
+            }
         }
         buf.ghost1 = makeGhost(this);
         buf.ghost2 = makeGhost(this);
@@ -4208,17 +4235,6 @@ class $modify(BufPlayLayer, PlayLayer) {
         this->addChild(buf.panel);
         refreshPanel();
 
-        buf.watermark = CCLabelBMFont::create("", "bigFont.fnt");
-        buf.watermark->setScale(0.28f);
-        buf.watermark->setColor({ 150, 205, 255 });
-        buf.watermark->setOpacity(153);
-        buf.watermark->setAnchorPoint({ 0.f, 0.f });
-        buf.watermark->setPosition({ 6.f, 4.f });
-        buf.watermark->setZOrder(1000);
-        this->addChild(buf.watermark);
-        buf.usedThisAttempt = false;
-        refreshWatermark();
-
         buf.autoTag = CCLabelBMFont::create("AUTO INPUTS ON", "bigFont.fnt");
         buf.autoTag->setScale(0.24f);
         buf.autoTag->setColor({ 255, 120, 120 });
@@ -4299,7 +4315,8 @@ class $modify(BufPlayLayer, PlayLayer) {
         benchFinish();
         benchNeedStart = true;
         endAttempt();
-        buf.usedThisAttempt = false;
+        buf.activationCounter = 0;
+        buf.activationBypassCurrentPress = false;
         resetPending();
         forgetPress();
         refreshAutoTag();
@@ -4313,7 +4330,6 @@ class $modify(BufPlayLayer, PlayLayer) {
 
     void togglePracticeMode(bool practiceMode) {
         PlayLayer::togglePracticeMode(practiceMode);
-        refreshWatermark();
         refreshAutoTag();
     }
 
@@ -4408,7 +4424,6 @@ class $modify(BufPlayerObject, PlayerObject) {
             ++tickCount;
             ++logClock;
             if (buf.enabled) {
-                buf.usedThisAttempt = true;
             }
             if (buf.panelDirty) {
                 buf.panelDirty = false;
