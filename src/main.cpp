@@ -2950,6 +2950,7 @@ namespace {
             buf.autoReleased = false;
             buf.autoDash = false;
             if (!down) {
+                buf.activationBypassCurrentPress = false;
                 return true;
             }
         }
@@ -3978,6 +3979,12 @@ $on_mod(Loaded) {
     if (!Mod::get()->getSavedValue<bool>("low-latency-v260", false)) {
         Mod::get()->setSettingValue<bool>("low-latency", false);
         Mod::get()->setSavedValue("low-latency-v260", true);
+    }
+    // One-time v2.79.15 migration: disable the old high-volume per-input logger by default.
+    // Users can turn it back on later from Mod settings.
+    if (!Mod::get()->getSavedValue<bool>("debugger-default-off-v27915", false)) {
+        Mod::get()->setSettingValue<bool>("debugger-enabled", false);
+        Mod::get()->setSavedValue("debugger-default-off-v27915", true);
     }
     readSettings();
     applyDelaySetting();
